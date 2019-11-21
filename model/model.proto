@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package model;
+
+
+//This service is meant for Client <-> Minion communication.
+service Minion {
+    rpc UploadFile(stream UploadRequest) returns (UploadResponse);
+    rpc DownloadFile(DownloadRequest) returns (stream FileChunk);
+}
+
+message FileChunk {
+    bytes content = 1;
+}
+
+message UploadRequest {
+    oneof data {
+        FileChunk chunk = 1;
+        string UUID = 2;
+    }
+}
+
+message DownloadRequest {
+    string UUID = 1;
+}
+
+enum HashType {
+    STRLEN = 0; //https://news-web.php.net/php.internals/70691
+    SHA1 = 1;
+    SHA256 = 2;
+    SHA3 = 3;
+    CRC32 = 32;
+}
+
+//Hash the received file to assure the caller that we received it correctly.
+message UploadResponse {
+    HashType type = 1;
+    string hex_hash = 2;
+}
+
