@@ -2,11 +2,35 @@ syntax = "proto3";
 
 package model;
 
+service Master {
+    rpc InitiateFileUpload(FileUploadRequest) returns (FileUploadResponse);
+    rpc InitiateFileRead(FileReadRequest) returns (FileReadResponse);
+}
 
 //This service is meant for Client <-> Minion communication.
 service Minion {
     rpc UploadFile(stream UploadRequest) returns (UploadResponse);
     rpc DownloadFile(DownloadRequest) returns (stream FileChunk);
+}
+
+//FileUploadRequest - Represents an upload request that is sent to the master.
+message FileUploadRequest {
+    string filename = 1;
+    int64 file_size = 2;
+}
+
+//FileUploadResp - A response from the master about a file upload request.
+message FileUploadResponse {
+    string UUID = 1;
+    string empowered_minion_IP = 2;
+}
+
+message FileReadRequest {
+    string UUID = 1;
+}
+
+message FileReadResponse {
+    string minion_server_IP = 1;
 }
 
 message FileChunk {
