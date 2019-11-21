@@ -20,6 +20,20 @@ const (
 	chunksize = 1024
 )
 
+func initiateFileRead(client pb.MasterClient, req *pb.FileReadRequest) (resp *pb.FileReadResponse, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	resp, err = client.InitiateFileRead(ctx, req)
+	return
+}
+
+func initiateFileUpload(client pb.MasterClient, req *pb.FileUploadRequest) (resp *pb.FileUploadResponse, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	resp, err = client.InitiateFileUpload(ctx, req)
+	return
+}
+
 func testMinion(conn *grpc.ClientConn) (err error) {
 	var (
 		file *os.File
