@@ -8,10 +8,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"github.com/plutoberth/Failsystem/core"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -41,7 +42,7 @@ func testMinion(conn *grpc.ClientConn) (err error) {
 
 	c := pb.NewMinionClient(conn)
 
-	if file, err = os.Open("testfile"); err != nil {
+	if file, err = os.Open("file.test"); err != nil {
 		return
 	}
 	defer file.Close()
@@ -52,7 +53,7 @@ func testMinion(conn *grpc.ClientConn) (err error) {
 	}
 	defer stream.CloseSend()
 
-	if err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_UUID{UUID: uuid.New().String()}}) err != nil {
+	if err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_UUID{UUID: uuid.New().String()}}); err != nil {
 		return errors.Wrapf(err, "Failed when sending headers.")
 	}
 
@@ -77,7 +78,15 @@ func testMinion(conn *grpc.ClientConn) (err error) {
 		return errors.Wrapf(err, "Failed while closing stream")
 	}
 
-	fmt.Println(resp)
+	valid, err := core.VerifyUploadResponse(resp, file)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to hash")
+	}
+
+	if valid == false {
+		return errors.New("data corrupted during transmission")
+	}
+
 	return nil
 }
 
