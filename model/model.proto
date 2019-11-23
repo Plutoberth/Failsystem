@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package model;
+
+service Master {
+    rpc InitiateFileUpload(FileUploadRequest) returns (FileUploadResponse);
+    rpc InitiateFileRead(FileReadRequest) returns (FileReadResponse);
+}
+
+//This service is meant for Client <-> Minion communication.
+service Minion {
+    rpc UploadFile(stream UploadRequest) returns (UploadResponse);
+    rpc DownloadFile(DownloadRequest) returns (stream FileChunk);
+}
+
+//FileUploadRequest - Represents an upload request that is sent to the master.
+message FileUploadRequest {
+    string filename = 1;
+    int64 file_size = 2;
+}
+
+//FileUploadResp - A response from the master about a file upload request.
+message FileUploadResponse {
+    string UUID = 1;
+    string empowered_minion_IP = 2;
+}
+
+message FileReadRequest {
+    string UUID = 1;
+}
+
+message FileReadResponse {
+    string minion_server_IP = 1;
+}
+
+message FileChunk {
+    bytes content = 1;
+}
+
+message UploadRequest {
+    oneof data {
+        FileChunk chunk = 1;
+        string UUID = 2;
+    }
+}
+
+message DownloadRequest {
+    string UUID = 1;
+}
+
+enum HashType {
+    STRLEN = 0; //https://news-web.php.net/php.internals/70691
+    SHA1 = 1;
+    SHA256 = 2;
+}
+
+//Hash the received file to assure the caller that we received it correctly.
+message UploadResponse {
+    HashType type = 1;
+    string hex_hash = 2;
+}
+
