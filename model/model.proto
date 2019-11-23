@@ -52,8 +52,6 @@ enum HashType {
     STRLEN = 0; //https://news-web.php.net/php.internals/70691
     SHA1 = 1;
     SHA256 = 2;
-    SHA3 = 3;
-    CRC32 = 32;
 }
 
 //Hash the received file to assure the caller that we received it correctly.

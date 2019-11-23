@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/plutoberth/Failsystem/crypto/strlen"
 	pb "github.com/plutoberth/Failsystem/model"
 )
 
@@ -24,13 +25,8 @@ func VerifyUploadResponse(resp *pb.UploadResponse, file *os.File) (bool, error) 
 	case pb.HashType_SHA256:
 		hasher = sha256.New()
 
-	//TODO: Implement other hash checks.
-	case pb.HashType_CRC32:
-		fallthrough
-	case pb.HashType_SHA3:
-		fallthrough
 	case pb.HashType_STRLEN:
-		fallthrough
+		hasher = strlen.New()
 
 	default:
 		return false, fmt.Errorf("hash type %v not supported", resp.GetType().String())
