@@ -27,7 +27,6 @@ func (f *strlenHash) Write(p []byte) (n int, err error) {
 func (f *strlenHash) Sum(b []byte) []byte {
 	f.Write(b)
 	sumHex := fmt.Sprintf("%x", f.sum)
-	fmt.Println(f.sum)
 	return []byte(sumHex)
 }
 
