@@ -1,0 +1,132 @@
+package core
+
+import (
+	"encoding/hex"
+	"fmt"
+	"io"
+	"net"
+	"os"
+
+	"github.com/google/uuid"
+	"github.com/pkg/errors"
+	"github.com/plutoberth/Failsystem/crypto"
+	pb "github.com/plutoberth/Failsystem/model"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+//MinionServer interface defines methods that the caller may use to host the Minion grpc service.
+type MinionServer interface {
+	Serve() error
+	Close()
+}
+
+type minionServer struct {
+	pb.UnimplementedMinionServer
+	address string
+	server  *grpc.Server
+}
+
+//NewMinionServer - Initializes a new minion server.
+func NewMinionServer(port uint) (MinionServer, error) {
+	s := new(minionServer)
+	if port >= 65536 {
+		return s, errors.New("port must be between 0 and 65536")
+	}
+	s.address = fmt.Sprintf("localhost:%v", port)
+	return s, nil
+}
+
+func (s *minionServer) Serve() error {
+	lis, err := net.Listen("tcp", s.address)
+	if err != nil {
+		return err
+	}
+
+	s.server = grpc.NewServer()
+	pb.RegisterMinionServer(s.server, s)
+	s.server.Serve(lis)
+	return nil
+}
+
+func (s *minionServer) Close() {
+	if s.server != nil {
+		s.server.Stop()
+		s.server = nil
+	}
+}
+
+func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
+	var (
+		file     *os.File
+		filename string
+		req      *pb.UploadRequest
+	)
+
+	if req, err = stream.Recv(); err != nil {
+		return status.Errorf(codes.Internal, "Failed while receiving from stream")
+	}
+	switch data := req.GetData().(type) {
+	case *pb.UploadRequest_Chunk:
+		return status.Errorf(codes.InvalidArgument, "First Upload Request must be a UUID.")
+
+	case *pb.UploadRequest_UUID:
+		filename = data.UUID
+	}
+
+	if _, err := uuid.Parse(filename); err != nil {
+		fmt.Println(err.Error())
+		return status.Errorf(codes.InvalidArgument, "Error! Invalid UUID")
+
+	}
+
+	if file, err = os.Create(filename); err != nil {
+		//TODO: Add code to check if UUID is in queue and valid for the user.
+		fmt.Println(filename, err)
+		return status.Errorf(codes.Internal, "Error: Couldn't open file the file with that UUID.")
+	}
+
+	defer file.Close()
+
+	in, res := make(chan []byte, 1), make(chan []byte)
+
+	go crypto.SHA256Hasher(in, res)
+
+	for {
+		req, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				return status.Errorf(codes.Unknown, "Failed while reading from stream.")
+			}
+		}
+		switch data := req.GetData().(type) {
+		case *pb.UploadRequest_UUID:
+			return status.Errorf(codes.InvalidArgument, "Subsequent upload requests must be chunks.")
+
+		case *pb.UploadRequest_Chunk:
+			c := data.Chunk.GetContent()
+			if c == nil {
+				return status.Errorf(codes.InvalidArgument, "Content field must be populated.")
+			}
+			in <- c
+			file.Write(c)
+		}
+	}
+
+	close(in)
+
+	hexHash := hex.EncodeToString(<-res)
+	close(res)
+
+	if err := stream.SendAndClose(&pb.UploadResponse{Type: pb.HashType_SHA256, HexHash: hexHash}); err != nil {
+		return status.Errorf(codes.Internal, "Failed while sending response.")
+	}
+	return nil
+}
+
+func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_DownloadFileServer) error {
+	panic("not implemented")
+}
