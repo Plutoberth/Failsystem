@@ -1,6 +1,7 @@
 package core
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"github.com/plutoberth/Failsystem/crypto"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -89,9 +89,9 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 
 	defer file.Close()
 
-	in, res := make(chan []byte, 1), make(chan []byte)
+	hasher := sha256.New()
 
-	go crypto.SHA256Hasher(in, res)
+	w := io.MultiWriter(hasher, file)
 
 	for {
 		req, err := stream.Recv()
@@ -111,15 +111,12 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 			if c == nil {
 				return status.Errorf(codes.InvalidArgument, "Content field must be populated.")
 			}
-			in <- c
-			file.Write(c)
+
+			w.Write(c)
 		}
 	}
 
-	close(in)
-
-	hexHash := hex.EncodeToString(<-res)
-	close(res)
+	hexHash := hex.EncodeToString(hasher.Sum(nil))
 
 	if err := stream.SendAndClose(&pb.UploadResponse{Type: pb.HashType_SHA256, HexHash: hexHash}); err != nil {
 		return status.Errorf(codes.Internal, "Failed while sending response.")
