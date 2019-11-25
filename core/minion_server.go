@@ -112,7 +112,9 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 				return status.Errorf(codes.InvalidArgument, "Content field must be populated.")
 			}
 
-			w.Write(c)
+			if _, err := w.Write(c); err != nil {
+				return status.Errorf(codes.Internal, "Unable to write to file")
+			}
 		}
 	}
 
@@ -124,6 +126,22 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 	return nil
 }
 
-func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_DownloadFileServer) error {
-	panic("not implemented")
+func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_DownloadFileServer) (err error) {
+	var (
+		file *os.File
+	)
+
+	if _, err := uuid.Parse(req.GetUUID()); err != nil {
+		return status.Errorf(codes.InvalidArgument, "Download Request must contain a valid UUID")
+	}
+
+	if file, err = os.Open(req.GetUUID()); err != nil {
+		return status.Errorf(codes.InvalidArgument, "uuid not present")
+	}
+
+	if _, err := io.Copy(&DownloadFileServerWrapper{Stream: stream}, file); err != nil {
+		return status.Errorf(codes.Internal, "Failed while transferring: %v", err.Error())
+	}
+
+	return nil
 }
