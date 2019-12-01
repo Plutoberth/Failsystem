@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	pb "github.com/plutoberth/Failsystem/model"
+	. "github.com/plutoberth/Failsystem/pkg/omissions"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -27,6 +28,11 @@ type minionServer struct {
 	address string
 	server  *grpc.Server
 }
+
+const (
+	maxChunkSize uint32 = 2 << 8  //256 B
+	minChunkSize uint32 = 2 << 18 //256 KiB
+)
 
 //NewMinionServer - Initializes a new minion server.
 func NewMinionServer(port uint) (MinionServer, error) {
@@ -139,8 +145,22 @@ func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Do
 		return status.Errorf(codes.InvalidArgument, "uuid not present")
 	}
 
-	if _, err := io.Copy(&DownloadFileServerWrapper{Stream: stream}, file); err != nil {
-		return status.Errorf(codes.Internal, "Failed while transferring: %v", err.Error())
+	chunkSize := req.GetChunkSize()
+	chunkSize = Max(minChunkSize, Min(chunkSize, maxChunkSize))
+	buf := make([]byte, chunkSize)
+	for {
+		n, err := file.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return errors.Wrap(err, "Failed while copying file to buf")
+		}
+		err = stream.Send(&pb.FileChunk{Content: buf[:n]})
+
+		if err != nil {
+			err = errors.Wrap(err, "Failed while sending data to the client")
+		}
 	}
 
 	return nil
