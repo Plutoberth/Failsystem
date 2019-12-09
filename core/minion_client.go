@@ -9,21 +9,26 @@ import (
 	"github.com/pkg/errors"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 //MinionClient interface defines methods that the caller may use to use the Minion grpc service.
 type MinionClient interface {
-	UploadFile(filepath string, chunksize int) error
+	UploadFile(filepath string) error
 	Close()
 }
 
 type minionClient struct {
-	conn   *grpc.ClientConn
-	client pb.MinionClient
+	conn      *grpc.ClientConn
+	client    pb.MinionClient
+	chunkSize int
 }
 
+const chunkSize = 4096
+
 //NewMinionClient - Returns a MinionClient struct initialized with the string.
-func NewMinionClient(address string) (MinionClient, error) {
+func NewMinionClient(address string, chunkSize int) (MinionClient, error) {
 	c := new(minionClient)
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
@@ -31,6 +36,7 @@ func NewMinionClient(address string) (MinionClient, error) {
 	}
 	c.conn = conn
 	c.client = pb.NewMinionClient(conn)
+	c.chunkSize = chunkSize
 	return c, nil
 }
 
@@ -41,7 +47,7 @@ func (c *minionClient) Close() {
 	}
 }
 
-func (c *minionClient) UploadFile(filepath string, chunksize int) (err error) {
+func (c *minionClient) UploadFile(filepath string) (err error) {
 	var (
 		file *os.File
 	)
@@ -61,7 +67,7 @@ func (c *minionClient) UploadFile(filepath string, chunksize int) (err error) {
 		return errors.Wrap(err, "Failed when sending headers")
 	}
 
-	buf := make([]byte, chunksize)
+	buf := make([]byte, c.chunkSize)
 	for {
 		n, err := file.Read(buf)
 		if err != nil {
@@ -89,6 +95,44 @@ func (c *minionClient) UploadFile(filepath string, chunksize int) (err error) {
 
 	if valid == false {
 		return errors.New("data corrupted during transmission")
+	}
+
+	return nil
+}
+
+func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) {
+	var (
+		file *os.File
+	)
+
+	if file, err = os.Open(targetFile); err != nil {
+		return errors.Wrapf(err, "Failed to open %v", targetFile)
+	}
+
+	defer file.Close()
+
+	stream, err := c.client.DownloadFile(context.Background(), &pb.DownloadRequest{
+		UUID:      uuid,
+		ChunkSize: ChunkSize,
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "Failed while sending download request")
+	}
+
+	for {
+		req, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				return status.Errorf(codes.Unknown, "Failed while reading from stream.")
+			}
+		}
+		c := req.Content
+		if _, err = file.Write(c); err != nil {
+			return errors.Wrapf(err, "Failed while writing to %v", targetFile)
+		}
 	}
 
 	return nil

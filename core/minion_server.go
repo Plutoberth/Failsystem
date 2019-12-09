@@ -89,7 +89,6 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 
 	if file, err = os.Create(filename); err != nil {
 		//TODO: Add code to check if UUID is in queue and valid for the user.
-		fmt.Println(filename, err)
 		return status.Errorf(codes.Internal, "Error: Couldn't open file the file with that UUID.")
 	}
 
@@ -147,6 +146,7 @@ func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Do
 
 	chunkSize := req.GetChunkSize()
 	chunkSize = Max(minChunkSize, Min(chunkSize, maxChunkSize))
+
 	buf := make([]byte, chunkSize)
 	for {
 		n, err := file.Read(buf)
