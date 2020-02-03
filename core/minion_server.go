@@ -5,13 +5,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	pb "github.com/plutoberth/Failsystem/model"
-	. "github.com/plutoberth/Failsystem/pkg/omissions"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -30,15 +30,15 @@ type minionServer struct {
 }
 
 const (
-	maxChunkSize uint32 = 2 << 8  //256 B
-	minChunkSize uint32 = 2 << 18 //256 KiB
+	defaultChunkSize uint32 = 2 << 16
+	maxPort      uint   = 2 << 16 // 65536
 )
 
 //NewMinionServer - Initializes a new minion server.
 func NewMinionServer(port uint) (MinionServer, error) {
 	s := new(minionServer)
-	if port >= 65536 {
-		return s, errors.New("port must be between 0 and 65536")
+	if port >= maxPort {
+		return s, errors.Errorf("port must be between 0 and %v", maxPort)
 	}
 	s.address = fmt.Sprintf("localhost:%v", port)
 	return s, nil
@@ -52,8 +52,8 @@ func (s *minionServer) Serve() error {
 
 	s.server = grpc.NewServer()
 	pb.RegisterMinionServer(s.server, s)
-	s.server.Serve(lis)
-	return nil
+	err = s.server.Serve(lis)
+	return err
 }
 
 func (s *minionServer) Close() {
@@ -83,13 +83,13 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 
 	if _, err := uuid.Parse(filename); err != nil {
 		fmt.Println(err.Error())
-		return status.Errorf(codes.InvalidArgument, "Error! Invalid UUID")
+		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
 
 	}
 
 	if file, err = os.Create(filename); err != nil {
 		//TODO: Add code to check if UUID is in queue and valid for the user.
-		return status.Errorf(codes.Internal, "Error: Couldn't open file the file with that UUID.")
+		return status.Errorf(codes.Internal, "Couldn't open a file with that UUID.")
 	}
 
 	defer file.Close()
@@ -137,31 +137,16 @@ func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Do
 	)
 
 	if _, err := uuid.Parse(req.GetUUID()); err != nil {
-		return status.Errorf(codes.InvalidArgument, "Download Request must contain a valid UUID")
+		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
 	}
 
 	if file, err = os.Open(req.GetUUID()); err != nil {
-		return status.Errorf(codes.InvalidArgument, "uuid not present")
+		return status.Errorf(codes.InvalidArgument, "UUID not present")
 	}
 
-	chunkSize := req.GetChunkSize()
-	chunkSize = Max(minChunkSize, Min(chunkSize, maxChunkSize))
-
-	buf := make([]byte, chunkSize)
-	for {
-		n, err := file.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return errors.Wrap(err, "Failed while copying file to buf")
-		}
-		err = stream.Send(&pb.FileChunk{Content: buf[:n]})
-
-		if err != nil {
-			err = errors.Wrap(err, "Failed while sending data to the client")
-		}
-	}
-
-	return nil
+	chunkWriter := NewFileChunkSenderWrapper(stream)
+	buf := make([]byte, defaultChunkSize)
+	bytesWritten, err := io.CopyBuffer(chunkWriter, file, buf)
+	log.Printf("Wrote %v bytes to chunkWriter", bytesWritten)
+	return err
 }

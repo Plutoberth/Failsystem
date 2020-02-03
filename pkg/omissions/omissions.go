@@ -1,5 +1,5 @@
 //Package omissions contains some functions that were weirdly left out of the Go programming language,
-//such as min(int, int). Not so "simple" after all.
+//such as min(int, int).
 package omissions
 
 //Min adds necessary stuff to go

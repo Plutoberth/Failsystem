@@ -10,9 +10,6 @@ service Master {
 //This service is meant for Client <-> Minion communication.
 service Minion {
     rpc UploadFile(stream UploadRequest) returns (UploadResponse);
-    //256 <= ChunkSize <= 256 KiB
-    //If the chunk size is smaller, the request will return an error.
-    //If it is larger, the chunk size will be 256 KiB. 
     rpc DownloadFile(DownloadRequest) returns (stream FileChunk);
 }
 
@@ -49,7 +46,6 @@ message UploadRequest {
 
 message DownloadRequest {
     string UUID = 1;
-    uint32 chunk_size = 2;
 }
 
 enum HashType {

@@ -9,14 +9,13 @@ import (
 	"github.com/pkg/errors"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 //MinionClient interface defines methods that the caller may use to use the Minion grpc service.
 type MinionClient interface {
 	UploadFile(filepath string) error
-	Close()
+	DownloadFile(uuid string, targetFile string) error
+	Close() error
 }
 
 type minionClient struct {
@@ -40,11 +39,14 @@ func NewMinionClient(address string, chunkSize int) (MinionClient, error) {
 	return c, nil
 }
 
-func (c *minionClient) Close() {
+func (c *minionClient) Close() (err error) {
 	if c.conn != nil {
-		c.conn.Close()
+		err = c.conn.Close()
 		c.conn = nil //prevent double calls
+	} else {
+		err = errors.New("Connection has already been closed, or it was never initialized.")
 	}
+	return err
 }
 
 func (c *minionClient) UploadFile(filepath string) (err error) {
@@ -105,7 +107,7 @@ func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) 
 		file *os.File
 	)
 
-	if file, err = os.Open(targetFile); err != nil {
+	if file, err = os.Create(targetFile); err != nil {
 		return errors.Wrapf(err, "Failed to open %v", targetFile)
 	}
 
@@ -113,7 +115,7 @@ func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) 
 
 	stream, err := c.client.DownloadFile(context.Background(), &pb.DownloadRequest{
 		UUID:      uuid,
-		ChunkSize: ChunkSize,
+		ChunkSize: chunkSize,
 	})
 
 	if err != nil {
@@ -126,7 +128,7 @@ func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) 
 			if err == io.EOF {
 				break
 			} else {
-				return status.Errorf(codes.Unknown, "Failed while reading from stream.")
+				return errors.Wrap(err, "Failed while reading from stream")
 			}
 		}
 		c := req.Content
