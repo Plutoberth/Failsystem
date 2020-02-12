@@ -29,8 +29,8 @@ func fileExists(filename string) bool {
 }
 
 //Gets the size (non-recursively) of all files in the directory.
-func getDirFilesSize(path string) (uint64, error) {
-	var size uint64
+func getDirFilesSize(path string) (int64, error) {
+	var size int64
 	dir, err := os.Open(path)
 	if err != nil {
 		return 0, err
@@ -45,7 +45,7 @@ func getDirFilesSize(path string) (uint64, error) {
 			return 0, err
 		}
 		if !stat.IsDir() {
-			size += uint64(stat.Size())
+			size += stat.Size()
 		}
 	}
 

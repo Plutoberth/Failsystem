@@ -15,7 +15,7 @@ import (
 	"sync"
 )
 
-const UNLIMITED = math.MaxUint64
+const UNLIMITED = math.MaxInt64
 const dataFolderPerms = 600 //only r/w for the owning user
 const transfersDataFolder = "transfers"
 const managedFolderSentinel = ".managedFolder"
@@ -25,11 +25,11 @@ const managedFolderSentinel = ".managedFolder"
 type ManagedFolder interface {
 
 	//Get the maximum number of bytes the folder can store.
-	GetQuota() uint64
+	GetQuota() int64
 
 	//Get the remaining number of bytes the folder can store. Normally, the user shouldn't care about this method
 	//and use AllocateSpace instead.
-	GetRemainingQuota() uint64
+	GetRemainingQuota() int64
 
 	//Get the path of the underlying folder.
 	GetFolderPath() string
@@ -41,7 +41,7 @@ type ManagedFolder interface {
 	//Cancelling the context is a valid operation as long as WriteToFile wasn't called for the specified UUID,
 	//otherwise, the operation is a no-op.
 	//It's guaranteed that the UUID is freed for reallocation immediately after cancellation.
-	AllocateSpace(ctx context.Context, UUID string, allocSize uint64) (bool, error)
+	AllocateSpace(ctx context.Context, UUID string, allocSize int64) (bool, error)
 
 	//Receive a non thread-safe io.ReadCloser for the specified UUID.
 	//ReadFile will fail if the UUID hasn't been closed.
@@ -60,19 +60,19 @@ type ManagedFolder interface {
 
 type allocationEntry struct {
 	UUID string
-	size uint64
+	size int64
 	//If writtenTo is closed, WriteToFile has been called for the entry. This serves as a simple flag.
 	writtenTo chan struct{}
 }
 
 type fileEntry struct {
 	UUID string
-	size uint64
+	size int64
 }
 
 type managedFolder struct {
 	//quota, in bytes.
-	quota uint64
+	quota int64
 	//The path to the actual managed folder.
 	folderPath string
 
@@ -81,20 +81,22 @@ type managedFolder struct {
 	allocs *map[string]allocationEntry
 
 	//used amount by allocations, in bytes
-	usedAllocationBytes uint64
+	usedAllocationBytes int64
 
 	//used amount by finalized files, in bytes
-	usedFileBytes uint64
+	usedFileBytes int64
 }
 
-//NewManagedFolder creates a new managed folder. nonEmptyOK defines whether it's ok for the folder to not be empty.
-func NewManagedFolder(quota uint64, folderPath string) (ManagedFolder, error) {
+//NewManagedFolder creates a new managed folder.
+func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 	folderPath, err := filepath.Abs(folderPath)
+
 	if err != nil {
 		return nil, errors.Errorf("\"%v\" is not a valid path", folderPath)
 	}
 
 	if stat, err := os.Stat(folderPath); os.IsNotExist(err) {
+		//Create all dirs required for the operation
 		if err := os.MkdirAll(folderPath, dataFolderPerms); err != nil {
 			log.Printf("Couldn't create dir for \"%v\"", err)
 			return nil, errors.Wrap(err, "Couldn't create data folder")
@@ -119,10 +121,10 @@ func NewManagedFolder(quota uint64, folderPath string) (ManagedFolder, error) {
 	}
 
 	f, err := os.Create(filepath.Join(folderPath, managedFolderSentinel))
-	defer f.Close()
 	if err != nil {
 		return nil, errors.Errorf("Couldn't create sentinel file")
 	}
+	f.Close()
 
 	usedBytes, err := getDirFilesSize(folderPath)
 	if err != nil {
@@ -133,7 +135,7 @@ func NewManagedFolder(quota uint64, folderPath string) (ManagedFolder, error) {
 		quota:               quota,
 		folderPath:          folderPath,
 		mtx:                 new(sync.RWMutex),
-		allocs:              new(map[string]allocationEntry),
+		allocs:              &map[string]allocationEntry{},
 		usedAllocationBytes: 0,
 		usedFileBytes:       usedBytes,
 	}
@@ -141,11 +143,11 @@ func NewManagedFolder(quota uint64, folderPath string) (ManagedFolder, error) {
 	return &folder, nil
 }
 
-func (m *managedFolder) GetQuota() uint64 {
+func (m *managedFolder) GetQuota() int64 {
 	return m.quota
 }
 
-func (m *managedFolder) GetRemainingQuota() uint64 {
+func (m *managedFolder) GetRemainingQuota() int64 {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 	return m.quota - m.usedAllocationBytes - m.usedFileBytes
@@ -155,7 +157,7 @@ func (m *managedFolder) GetFolderPath() string {
 	return m.folderPath
 }
 
-func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSize uint64) (bool, error) {
+func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSize int64) (bool, error) {
 	if m.GetRemainingQuota() < allocSize {
 		return false, nil
 	}
@@ -165,7 +167,7 @@ func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSiz
 	}
 
 	if fileExists(path.Join(m.folderPath, UUID)) {
-		return false, errors.Errorf("\"%v\" already exists")
+		return false, errors.Errorf("\"%v\" already exists", UUID)
 	}
 
 	entry := allocationEntry{
@@ -207,7 +209,7 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 	m.mtx.RLock()
 	entry, ok := (*m.allocs)[UUID]
 	if !ok {
-		return nil, errors.Errorf("%v not found in allocations")
+		return nil, errors.Errorf("%v not found in allocations", UUID)
 	}
 	select {
 	case <-entry.writtenTo:
@@ -220,14 +222,25 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 	m.mtx.RUnlock()
 
 	if fileExists(path.Join(m.folderPath, UUID)) {
-		return nil, errors.Errorf("\"%v\" already exists... somehow. This shouldn't happen.")
+		return nil, errors.Errorf("\"%v\" already exists... somehow. This shouldn't happen.", UUID)
 	}
 
 	//Create it in the temporary data folder.
-	fpath := path.Join(m.folderPath, transfersDataFolder, UUID)
+	folderPath := path.Join(m.folderPath, transfersDataFolder)
+	fpath := path.Join(folderPath, UUID)
 
+	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
+		//Create dir
+		if err := os.MkdirAll(folderPath, dataFolderPerms); err != nil {
+			log.Printf("Couldn't create dir for \"%v\"", err)
+			return nil, errors.Wrap(err, "Couldn't create transfers folder")
+		}
+	}
+
+	log.Printf(fpath)
 	f, err := os.Create(fpath)
 	if err != nil {
+		log.Println(err)
 		return nil, errors.Errorf("Couldn't open \"%v\" for writing", UUID)
 	}
 

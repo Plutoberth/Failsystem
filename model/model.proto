@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package model;
 
-//All further references to "UUID" are defined to mean a type 4 (Fully random) UUID
+//All further references to "UUID" are defined to mean a type 1 (time+MAC) UUID
 
 //This service is meant for Client --> Master communication.
 service Master {

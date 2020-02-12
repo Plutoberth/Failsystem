@@ -11,12 +11,12 @@ type managedFile struct {
 	folder *managedFolder
 	file *os.File
 	entry allocationEntry
-	bytesWritten uint64
+	bytesWritten int64
 	filePath string
 }
 
 func (m *managedFile) Write(p []byte) (n int, err error) {
-	newSize := m.bytesWritten + uint64(len(p))
+	newSize := m.bytesWritten + int64(len(p))
 	if newSize > m.entry.size {
 		return 0, errors.Errorf("Write exceeded allocation size: %v > %v", newSize, m.entry.size)
 	}
