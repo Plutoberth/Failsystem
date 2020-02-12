@@ -2,27 +2,45 @@ syntax = "proto3";
 
 package model;
 
+//All further references to "UUID" are defined to mean a type 4 (Fully random) UUID
+
+//This service is meant for Client --> Master communication.
 service Master {
-    rpc InitiateFileUpload(FileUploadRequest) returns (FileUploadResponse);
-    rpc InitiateFileRead(FileReadRequest) returns (FileReadResponse);
+    rpc InitiateFileUpload (FileUploadRequest) returns (FileUploadResponse);
+    rpc InitiateFileRead (FileReadRequest) returns (FileReadResponse);
 }
 
-//This service is meant for Client <-> Minion communication.
+//This service is meant for Client --> Minion communication.
 service Minion {
-    rpc UploadFile(stream UploadRequest) returns (UploadResponse);
-    rpc DownloadFile(DownloadRequest) returns (stream FileChunk);
+    rpc UploadFile (stream UploadRequest) returns (DataHash);
+    rpc DownloadFile (DownloadRequest) returns (stream FileChunk);
+}
+
+enum HashType {
+    STRLEN = 0; //https://news-web.php.net/php.internals/70691
+    SHA1 = 1;
+    SHA256 = 2;
+}
+
+message DataHash {
+    HashType type = 1;
+    string hexHash = 2;
+}
+
+message FileChunk {
+    bytes content = 1;
 }
 
 //FileUploadRequest - Represents an upload request that is sent to the master.
 message FileUploadRequest {
-    string filename = 1;
-    int64 file_size = 2;
+    string fileName = 1;
+    int64 fileSize = 2;
 }
 
 //FileUploadResp - A response from the master about a file upload request.
 message FileUploadResponse {
     string UUID = 1;
-    string empowered_minion_IP = 2;
+    string empoweredMinionIp = 2;
 }
 
 message FileReadRequest {
@@ -30,11 +48,8 @@ message FileReadRequest {
 }
 
 message FileReadResponse {
-    string minion_server_IP = 1;
-}
-
-message FileChunk {
-    bytes content = 1;
+    string minionServerIp = 1;
+    DataHash hash = 2;
 }
 
 message UploadRequest {
@@ -46,17 +61,5 @@ message UploadRequest {
 
 message DownloadRequest {
     string UUID = 1;
-}
-
-enum HashType {
-    STRLEN = 0; //https://news-web.php.net/php.internals/70691
-    SHA1 = 1;
-    SHA256 = 2;
-}
-
-//Hash the received file to assure the caller that we received it correctly.
-message UploadResponse {
-    HashType type = 1;
-    string hex_hash = 2;
 }
 

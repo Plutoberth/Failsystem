@@ -12,7 +12,7 @@ type strlenHash struct {
 }
 
 //Size of the strlen checksum in bytes.
-const Size = 8
+const Size = 16
 
 //New returns a new hash.Hash computing the strlen checksum.
 func New() hash.Hash {
@@ -25,7 +25,7 @@ func (f *strlenHash) Write(p []byte) (n int, err error) {
 }
 
 func (f *strlenHash) Sum(b []byte) []byte {
-	f.Write(b)
+	_, _ = f.Write(b)
 	sumHex := fmt.Sprintf("%x", f.sum)
 	return []byte(sumHex)
 }
