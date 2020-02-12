@@ -36,10 +36,11 @@ func getDirFilesSize(path string) (uint64, error) {
 		return 0, err
 	}
 	defer dir.Close()
-	
+
+	//Read all names
 	files, err := dir.Readdirnames(-1)
 	for _, file := range files {
-		stat, err := os.Stat(filepath.Join(path, file) )
+		stat, err := os.Stat(filepath.Join(path, file))
 		if err != nil {
 			return 0, err
 		}
