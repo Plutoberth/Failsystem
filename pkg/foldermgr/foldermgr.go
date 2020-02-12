@@ -4,11 +4,13 @@ package foldermgr
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"io"
 	"log"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"sync"
 )
@@ -35,7 +37,8 @@ type ManagedFolder interface {
 	//space for an existing allocation or file.
 	//Cancelling the context is a valid operation as long as WriteToFile wasn't called for the specified UUID,
 	//otherwise, the operation is a no-op.
-	AllocateSpace(UUID string, allocSize uint64, ctx context.Context) (bool, error)
+	//It's guaranteed that the UUID is freed for reallocation immediately after cancellation.
+	AllocateSpace(ctx context.Context, UUID string, allocSize uint64) (bool, error)
 
 	//Receive an io.ReadCloser for the specified UUID.
 	//ReadFile will fail if the UUID hasn't been closed.
@@ -53,11 +56,10 @@ type ManagedFolder interface {
 }
 
 type allocationEntry struct {
-	mtx *sync.Mutex
 	UUID string
 	size uint64
 	//If we already started writing to the mutex, the cancel op is a no-op.
-	startedWriting bool
+	writtenTo chan bool
 }
 
 type managedFolder struct {
@@ -71,8 +73,6 @@ type managedFolder struct {
 	mtx    *sync.RWMutex
 	allocs *map[string]allocationEntry
 }
-
-
 
 //NewManagedFolder creates a new managed folder. nonEmptyOK defines whether it's ok for the folder to not be empty.
 //TODO: Add detection for a previously used folder, and use it regardless of nonEmpty
@@ -105,7 +105,7 @@ func NewManagedFolder(quota uint64, folderPath string, nonEmptyOK bool) (Managed
 			return nil, errors.Errorf("Couldn't open \"%v\"", folderPath)
 		}
 		if !empty && !nonEmptyOK {
-			return nil, errors.Errorf("Tried to mount on a non-empty folder \"%v\"." +
+			return nil, errors.Errorf("Tried to mount on a non-empty folder \"%v\"."+
 				"Enable the nonEmptyOK flag or try with an empty folder", folderPath)
 		}
 	}
@@ -118,6 +118,8 @@ func (m *managedFolder) GetQuota() uint64 {
 }
 
 func (m *managedFolder) GetRemainingQuota() uint64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	return m.quota - m.usedBytes
 }
 
@@ -125,8 +127,37 @@ func (m *managedFolder) GetFolderPath() string {
 	return m.folderPath
 }
 
-func (m *managedFolder) AllocateSpace(UUID string, allocSize uint64, ctx context.Context) (bool, error) {
-	panic("implement me")
+func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSize uint64) (bool, error) {
+	if m.GetRemainingQuota() < allocSize {
+		return false, nil
+	}
+
+	if _, err := uuid.Parse(UUID); err != nil {
+		return false, errors.Errorf("\"%v\" is not a valid UUID", UUID)
+	}
+
+	if fileExists(path.Join(m.folderPath, UUID)) {
+		return false, errors.Errorf("\"%v\" already exists")
+	}
+
+	entry := allocationEntry{
+		UUID:      UUID,
+		size:      allocSize,
+		writtenTo: make(chan bool),
+	}
+
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if _, ok := (*m.allocs)[UUID]; ok {
+		return false, errors.Errorf("Tried to reallocate an existing allocation")
+	}
+
+	m.usedBytes += entry.size
+	(*m.allocs)[UUID] = entry
+	go m.waitForCancellation(ctx, entry)
+
+	return true, nil
 }
 
 func (m *managedFolder) ReadFile(UUID string) (io.ReadCloser, error) {
@@ -137,5 +168,24 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 	panic("implement me")
 }
 
+func (m *managedFolder) freeAllocation(entry allocationEntry) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	if _, ok := (*m.allocs)[entry.UUID]; ok {
+		m.usedBytes -= entry.size
+		delete(*m.allocs, entry.UUID)
+		return nil
+	} else {
+		return errors.Errorf("%v isn't an allocation", entry.UUID)
+	}
+}
 
-
+func (m *managedFolder) waitForCancellation(ctx context.Context, entry allocationEntry) {
+	select {
+	case <-ctx.Done():
+		_ = m.freeAllocation(entry)
+	case <-entry.writtenTo:
+		//If they started writing to it, we no longer need to listen for the context.
+		return
+	}
+}

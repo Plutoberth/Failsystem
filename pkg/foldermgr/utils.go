@@ -18,3 +18,11 @@ func isDirEmpty(dir string) (bool, error) {
 	}
 	return false, err
 }
+
+func fileExists(filename string) bool {
+	stat, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !stat.IsDir()
+}
