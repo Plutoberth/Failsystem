@@ -180,10 +180,15 @@ func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSiz
 }
 
 func (m *managedFolder) ReadFile(UUID string) (io.ReadCloser, error) {
-	panic("implement me")
+	//Security note: if the UUID constraint is removed, you must check for path traversal.
+	if _, err := uuid.Parse(UUID); err != nil {
+		return nil, errors.Errorf("\"%v\" is not a valid UUID", UUID)
+	}
+	return os.Open(filepath.Join(m.folderPath, UUID))
 }
 
 func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
+	//Security note: if the UUID constraint is removed, you must check for path traversal.
 	if _, err := uuid.Parse(UUID); err != nil {
 		return nil, errors.Errorf("\"%v\" is not a valid UUID", UUID)
 	}
