@@ -115,7 +115,6 @@ func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) 
 
 	stream, err := c.client.DownloadFile(context.Background(), &pb.DownloadRequest{
 		UUID:      uuid,
-		ChunkSize: chunkSize,
 	})
 
 	if err != nil {
