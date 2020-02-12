@@ -259,7 +259,7 @@ func (m *managedFolder) waitForCancellation(ctx context.Context, entry allocatio
 	case <-ctx.Done():
 		_ = m.freeAllocation(entry)
 	case <-entry.writtenTo:
-		//If they started writing to it, we no longer need to listen for the context.
+		//If they closed it, we no longer need to listen for the context.
 		return
 	}
 }
