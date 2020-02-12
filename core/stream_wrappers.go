@@ -17,21 +17,21 @@ type FileChunkSenderWrapper interface {
 }
 
 type fileChunkSenderWrapper struct {
-	Stream FileChunkSender
+	stream FileChunkSender
 }
 
 func NewFileChunkSenderWrapper(Stream FileChunkSender) FileChunkSenderWrapper {
 	s := new(fileChunkSenderWrapper)
-	s.Stream = Stream
+	s.stream = Stream
 
 	return s
 }
 
 func (s *fileChunkSenderWrapper) Write(p []byte) (n int, err error) {
-	if s.Stream == nil {
+	if s.stream == nil {
 		return 0, errors.New("Wrapper must be initialized with stream")
 	}
-	if err := s.Stream.Send(&pb.FileChunk{Content: p}); err != nil {
+	if err := s.stream.Send(&pb.FileChunk{Content: p}); err != nil {
 		return 0, err
 	}
 	return len(p), nil
