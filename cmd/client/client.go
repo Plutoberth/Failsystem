@@ -25,7 +25,11 @@ func main() {
 	}
 	defer minion.Close()
 
-	if err := minion.UploadFile(*filename); err != nil {
-		fmt.Println(err)
-	}
+	//if err := minion.UploadFile(*filename); err != nil {
+	//	fmt.Println(err)
+	//}
+
+	//if err := minion.DownloadFile("25acfdd3-0e00-4923-87a2-37e33766d680", "testme"); err != nil {
+	//	fmt.Println(err)
+	//}
 }

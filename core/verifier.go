@@ -14,7 +14,7 @@ import (
 )
 
 //VerifyUploadResponse checks if the response matches the file.
-func VerifyUploadResponse(resp *pb.UploadResponse, file *os.File) (bool, error) {
+func VerifyUploadResponse(resp *pb.DataHash, file *os.File) (bool, error) {
 	var hasher hash.Hash
 
 	switch resp.GetType() {

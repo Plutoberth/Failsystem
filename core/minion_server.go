@@ -125,7 +125,7 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 
 	hexHash := hex.EncodeToString(hasher.Sum(nil))
 
-	if err := stream.SendAndClose(&pb.UploadResponse{Type: pb.HashType_SHA256, HexHash: hexHash}); err != nil {
+	if err := stream.SendAndClose(&pb.DataHash{Type: pb.HashType_SHA256, HexHash: hexHash}); err != nil {
 		return status.Errorf(codes.Internal, "Failed while sending response.")
 	}
 	return nil
