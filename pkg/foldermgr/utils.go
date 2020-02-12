@@ -3,6 +3,7 @@ package foldermgr
 import (
 	"io"
 	"os"
+	"path/filepath"
 )
 
 func isDirEmpty(dir string) (bool, error) {
@@ -25,4 +26,27 @@ func fileExists(filename string) bool {
 		return false
 	}
 	return !stat.IsDir()
+}
+
+//Gets the size (non-recursively) of all files in the directory.
+func getDirFilesSize(path string) (uint64, error) {
+	var size uint64
+	dir, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer dir.Close()
+	
+	files, err := dir.Readdirnames(-1)
+	for _, file := range files {
+		stat, err := os.Stat(filepath.Join(path, file) )
+		if err != nil {
+			return 0, err
+		}
+		if !stat.IsDir() {
+			size += uint64(stat.Size())
+		}
+	}
+
+	return size, err
 }
