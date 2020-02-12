@@ -18,6 +18,7 @@ import (
 const UNLIMITED = math.MaxUint64
 const dataFolderPerms = 600 //only r/w for the owning user
 const transfersDataFolder = "transfers"
+const managedFolderSentinel = ".managedFolder"
 
 //ManagedFolder exposes a thread-safe interface to control a folder, with a quota for sizes, and a simple io.WriteCloser interface.
 //On most io operations, it's not much more than a thin wrapper except enforcing sizes on writes.
@@ -87,8 +88,7 @@ type managedFolder struct {
 }
 
 //NewManagedFolder creates a new managed folder. nonEmptyOK defines whether it's ok for the folder to not be empty.
-//TODO: Add detection for a previously used folder, and use it regardless of nonEmpty
-func NewManagedFolder(quota uint64, folderPath string, nonEmptyOK bool) (ManagedFolder, error) {
+func NewManagedFolder(quota uint64, folderPath string) (ManagedFolder, error) {
 	folderPath, err := filepath.Abs(folderPath)
 	if err != nil {
 		return nil, errors.Errorf("\"%v\" is not a valid path", folderPath)
@@ -109,10 +109,19 @@ func NewManagedFolder(quota uint64, folderPath string, nonEmptyOK bool) (Managed
 		if err != nil {
 			return nil, errors.Errorf("Couldn't open \"%v\"", folderPath)
 		}
-		if !empty && !nonEmptyOK {
-			return nil, errors.Errorf("Tried to mount on a non-empty folder \"%v\"."+
-				"Enable the nonEmptyOK flag or try with an empty folder", folderPath)
+		if !empty {
+			//If the folder isn't empty, but the sentinel exists, we can write to the folder.
+			if !fileExists(filepath.Join(folderPath, managedFolderSentinel)) {
+				return nil, errors.Errorf("Tried to mount on a non-empty folder \"%v\"."+
+					"Enable the nonEmptyOK flag or try with an empty folder", folderPath)
+			}
 		}
+	}
+
+	f, err := os.Create(filepath.Join(folderPath, managedFolderSentinel))
+	defer f.Close()
+	if err != nil {
+		return nil, errors.Errorf("Couldn't create sentinel file")
 	}
 
 	usedBytes, err := getDirFilesSize(folderPath)
