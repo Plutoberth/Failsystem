@@ -97,7 +97,7 @@ func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 
 	if stat, err := os.Stat(folderPath); os.IsNotExist(err) {
 		//Create all dirs required for the operation
-		if err := os.MkdirAll(folderPath, dataFolderPerms); err != nil {
+		if err := os.MkdirAll(filepath.Join(folderPath, transfersDataFolder), dataFolderPerms); err != nil {
 			log.Printf("Couldn't create dir for \"%v\"", err)
 			return nil, errors.Wrap(err, "Couldn't create data folder")
 		}
@@ -109,13 +109,23 @@ func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 		//Check if dir is empty
 		empty, err := isDirEmpty(folderPath)
 		if err != nil {
-			return nil, errors.Errorf("Couldn't open \"%v\"", folderPath)
+			return nil, err
 		}
 		if !empty {
 			//If the folder isn't empty, but the sentinel exists, we can write to the folder.
 			if !fileExists(filepath.Join(folderPath, managedFolderSentinel)) {
-				return nil, errors.Errorf("Tried to mount on a non-empty folder \"%v\"."+
-					"Enable the nonEmptyOK flag or try with an empty folder", folderPath)
+				return nil, errors.Errorf("Tried to mount on a non-empty folder \"%v\"", folderPath)
+			}
+		} else {
+			// Make sure that the transfer folder is empty
+			transferPath := filepath.Join(folderPath, transfersDataFolder)
+
+			if err = os.RemoveAll(transferPath); err != nil {
+				return nil, err
+			}
+			if err = os.Mkdir(transferPath, dataFolderPerms); err != nil {
+				log.Printf("Couldn't create dir for \"%v\"", err)
+				return nil, errors.Wrap(err, "Couldn't create transfers folder")
 			}
 		}
 	}
@@ -204,30 +214,21 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 		return nil, errors.Errorf("\"%v\" is not a valid UUID", UUID)
 	}
 
-	//this also serves as a lock for entry, so that two functions wouldn't try to close it together after both of them
-	//checked that the channel wasn't closed
-	m.mtx.RLock()
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	entry, ok := (*m.allocs)[UUID]
 	if !ok {
 		return nil, errors.Errorf("%v not found in allocations", UUID)
 	}
-	select {
-	case <-entry.writtenTo:
-		return nil, errors.Errorf("%v is already being written to", UUID)
-	default:
-	}
+	entry.writtenTo <- struct{}{}
 	close(entry.writtenTo)
 
-	//We can unlock it now, because entry is exclusive for us and we no longer need map access.
-	m.mtx.RUnlock()
-
-	if fileExists(path.Join(m.folderPath, UUID)) {
-		return nil, errors.Errorf("\"%v\" already exists... somehow. This shouldn't happen.", UUID)
-	}
-
-	//Create it in the temporary data folder.
 	folderPath := path.Join(m.folderPath, transfersDataFolder)
 	fpath := path.Join(folderPath, UUID)
+
+	if fileExists(fpath) {
+		return nil, errors.Errorf("%v is already being written to", UUID)
+	}
 
 	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
 		//Create dir
@@ -238,7 +239,9 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 	}
 
 	log.Printf(fpath)
+	//Create it in the temporary data folder.
 	f, err := os.Create(fpath)
+
 	if err != nil {
 		log.Println(err)
 		return nil, errors.Errorf("Couldn't open \"%v\" for writing", UUID)
@@ -270,9 +273,9 @@ func (m *managedFolder) freeAllocation(entry allocationEntry) error {
 //Used to notify the managed folder that a new file was added. For extra speed, this can be reworked
 //to keep a list of files in memory instead of scanning each time and only keeping size in memory.
 func (m *managedFolder) registerFile(entry allocationEntry) error {
-	m.mtx.RLock()
+	m.mtx.Lock()
 	m.usedFileBytes += entry.size
-	m.mtx.RUnlock()
+	m.mtx.Unlock()
 	return nil
 }
 
