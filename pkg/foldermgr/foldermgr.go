@@ -39,7 +39,8 @@ type ManagedFolder interface {
 	//The function will return an error in cases where the folder can't be fetched, or the user tried to allocate
 	//space for an existing allocation or file.
 	//Cancelling the context is a valid operation as long as WriteToFile wasn't called for the specified UUID,
-	//otherwise, the operation is a no-op.
+	//otherwise, the operation is a no-op. Note that the freed space will not be available immediately due to an
+	//implementation detail.
 	//It's guaranteed that the UUID is freed for reallocation immediately after cancellation.
 	AllocateSpace(ctx context.Context, UUID string, allocSize int64) (bool, error)
 
