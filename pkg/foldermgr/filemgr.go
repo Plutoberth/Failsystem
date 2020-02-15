@@ -20,9 +20,9 @@ func (m *managedFile) Write(p []byte) (n int, err error) {
 	if newSize > m.entry.size {
 		return 0, errors.Errorf("Write exceeded allocation size: %v > %v", newSize, m.entry.size)
 	}
-	m.bytesWritten = newSize
-	//Relay back writes and number written from write function
-	return m.file.Write(p)
+	actualBytesWritten, err := m.file.Write(p)
+	m.bytesWritten += int64(actualBytesWritten) //Only update the actual number that was written
+	return actualBytesWritten, err
 }
 
 func (m *managedFile) Close() error {
