@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package model;
 
-//All further references to "UUID" are defined to mean a type 4 (Fully random) UUID
+//All further references to "UUID" are defined to mean a type 1 (time+MAC) UUID
 
 //This service is meant for Client --> Master communication.
 service Master {
@@ -14,6 +14,11 @@ service Master {
 service Minion {
     rpc UploadFile (stream UploadRequest) returns (DataHash);
     rpc DownloadFile (DownloadRequest) returns (stream FileChunk);
+}
+
+//This service is meant for Master --> Minion communication.
+service MasterToMinion {
+    rpc Allocate (AllocationRequest) returns (AllocationResponse);
 }
 
 enum HashType {
@@ -63,3 +68,15 @@ message DownloadRequest {
     string UUID = 1;
 }
 
+message AllocationRequest {
+    //For categorization
+    string UUID = 1;
+    uint64 fileSize = 2;
+}
+
+message AllocationResponse {
+    //allocated is "true" if space has been allocated for the UUID in the minion.
+    bool allocated = 1;
+    //availableSpace is the current available space if allocated is false, and the space after the allocation otherwise.
+    uint64 availableSpace = 2;
+}

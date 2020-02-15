@@ -82,9 +82,7 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 	}
 
 	if _, err := uuid.Parse(filename); err != nil {
-		fmt.Println(err.Error())
 		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
-
 	}
 
 	if file, err = os.Create(filename); err != nil {
