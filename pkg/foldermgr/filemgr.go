@@ -8,11 +8,11 @@ import (
 )
 
 type managedFile struct {
-	folder *managedFolder
-	file *os.File
-	entry allocationEntry
+	folder       *managedFolder
+	file         *os.File
+	entry        allocationEntry
 	bytesWritten int64
-	filePath string
+	filePath     string
 }
 
 func (m *managedFile) Write(p []byte) (n int, err error) {
@@ -48,5 +48,3 @@ func (m *managedFile) Close() error {
 
 	return m.folder.registerFile(m.entry)
 }
-
-

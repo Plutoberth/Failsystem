@@ -28,7 +28,7 @@ func getRandomUUID() string {
 }
 
 //Here, passing means not having any errors.
-func TestFolderClean(t *testing.T)  {
+func TestFolderClean(t *testing.T) {
 
 	m, err := NewManagedFolder(quota, testFolder)
 	if err != nil {
@@ -75,9 +75,8 @@ func TestFolderClean(t *testing.T)  {
 	}
 }
 
-
 //Test whether the folder reuse feature works correctly, both on a random folder and a good folder.
-func TestFolderReuse (t *testing.T) {
+func TestFolderReuse(t *testing.T) {
 	_, err := NewManagedFolder(quota, "./")
 
 	if err == nil {
@@ -91,7 +90,7 @@ func TestFolderReuse (t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_ , err = NewManagedFolder(quota, testFolder)
+	_, err = NewManagedFolder(quota, testFolder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,8 +118,8 @@ func TestFileLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	oversizedData := getRandomData(fileSize*2)
-	undersizedData := getRandomData(fileSize*0.5)
+	oversizedData := getRandomData(fileSize * 2)
+	undersizedData := getRandomData(fileSize * 0.5)
 
 	// If it failed correctly, this write should just be discarded.
 	if _, err := writeFile.Write(oversizedData); err == nil {
@@ -169,7 +168,7 @@ func TestQuotaLimits(t *testing.T) {
 	}
 
 	if success {
-		t.Fatalf("Exceeded quota by allocating %v bytes on a %v byte managed folder", quota * 1.2, quota)
+		t.Fatalf("Exceeded quota by allocating %v bytes on a %v byte managed folder", quota*1.2, quota)
 	}
 
 	cancel()
@@ -184,7 +183,7 @@ func TestQuotaLimits(t *testing.T) {
 	}
 
 	if !success {
-		t.Fatalf("Couldn't allocate %v bytes on an empty %v byte shared folder", quota * 0.5, quota)
+		t.Fatalf("Couldn't allocate %v bytes on an empty %v byte shared folder", quota*0.5, quota)
 	}
 
 	_, err = m.WriteToFile(uuidToCancel)
