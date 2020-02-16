@@ -29,7 +29,7 @@ type ManagedFolder interface {
 
 	//Get the remaining number of bytes the folder can store. Normally, the user shouldn't care about this method
 	//and use AllocateSpace instead.
-	GetRemainingQuota() int64
+	GetRemainingSpace() int64
 
 	//Get the path of the underlying folder.
 	GetFolderPath() string
@@ -158,7 +158,7 @@ func (m *managedFolder) GetQuota() int64 {
 	return m.quota
 }
 
-func (m *managedFolder) GetRemainingQuota() int64 {
+func (m *managedFolder) GetRemainingSpace() int64 {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 	return m.quota - m.usedAllocationBytes - m.usedFileBytes
@@ -169,7 +169,7 @@ func (m *managedFolder) GetFolderPath() string {
 }
 
 func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSize int64) (bool, error) {
-	if m.GetRemainingQuota() < allocSize {
+	if m.GetRemainingSpace() < allocSize {
 		return false, nil
 	}
 

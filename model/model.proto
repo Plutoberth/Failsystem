@@ -71,12 +71,12 @@ message DownloadRequest {
 message AllocationRequest {
     //For categorization
     string UUID = 1;
-    uint64 fileSize = 2;
+    int64 fileSize = 2;
 }
 
 message AllocationResponse {
     //allocated is "true" if space has been allocated for the UUID in the minion.
     bool allocated = 1;
     //availableSpace is the current available space if allocated is false, and the space after the allocation otherwise.
-    uint64 availableSpace = 2;
+    int64 availableSpace = 2;
 }
