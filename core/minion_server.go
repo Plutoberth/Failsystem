@@ -1,9 +1,11 @@
 package core
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/plutoberth/Failsystem/pkg/foldermgr"
 	"io"
 	"log"
 	"net"
@@ -25,7 +27,9 @@ type MinionServer interface {
 
 type minionServer struct {
 	pb.UnimplementedMinionServer
+	pb.UnimplementedMasterToMinionServer
 	address string
+	folder foldermgr.ManagedFolder
 	server  *grpc.Server
 }
 
@@ -35,12 +39,17 @@ const (
 )
 
 //NewMinionServer - Initializes a new minion server.
-func NewMinionServer(port uint) (MinionServer, error) {
+func NewMinionServer(port uint, folderPath string, quota int64) (MinionServer, error) {
 	s := new(minionServer)
 	if port >= maxPort {
-		return s, errors.Errorf("port must be between 0 and %v", maxPort)
+		return nil, errors.Errorf("port must be between 0 and %v", maxPort)
 	}
-	s.address = fmt.Sprintf("localhost:%v", port)
+	s.address = fmt.Sprintf("0.0.0.0:%v", port)
+	folder, err  := foldermgr.NewManagedFolder(quota, folderPath)
+	if err != nil {
+		return nil, err
+	}
+	s.folder = folder
 	return s, nil
 }
 
@@ -148,3 +157,9 @@ func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Do
 	log.Printf("Wrote %v bytes to chunkWriter", bytesWritten)
 	return err
 }
+
+func (s *minionServer) Allocate(ctx context.Context, in *pb.AllocationRequest, opts ...grpc.CallOption) (*pb.AllocationResponse, error) {
+		
+	panic("implement me")
+}
+
