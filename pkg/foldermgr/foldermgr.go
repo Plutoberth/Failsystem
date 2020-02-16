@@ -239,7 +239,6 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 		}
 	}
 
-	log.Printf(fpath)
 	//Create it in the temporary data folder.
 	f, err := os.Create(fpath)
 
