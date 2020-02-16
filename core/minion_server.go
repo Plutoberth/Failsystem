@@ -1,13 +1,16 @@
 package core
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/plutoberth/Failsystem/pkg/foldermgr"
 	"io"
 	"log"
 	"net"
 	"os"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -25,7 +28,9 @@ type MinionServer interface {
 
 type minionServer struct {
 	pb.UnimplementedMinionServer
+	pb.UnimplementedMasterToMinionServer
 	address string
+	folder foldermgr.ManagedFolder
 	server  *grpc.Server
 }
 
@@ -35,12 +40,19 @@ const (
 )
 
 //NewMinionServer - Initializes a new minion server.
-func NewMinionServer(port uint) (MinionServer, error) {
+func NewMinionServer(port uint, folderPath string, quota int64) (MinionServer, error) {
 	s := new(minionServer)
 	if port >= maxPort {
-		return s, errors.Errorf("port must be between 0 and %v", maxPort)
+		return nil, errors.Errorf("port must be between 0 and %v", maxPort)
 	}
-	s.address = fmt.Sprintf("localhost:%v", port)
+	s.address = fmt.Sprintf("0.0.0.0:%v", port)
+
+	folder, err  := foldermgr.NewManagedFolder(quota, folderPath)
+	if err != nil {
+		return nil, err
+	}
+	s.folder = folder
+
 	return s, nil
 }
 
@@ -52,6 +64,7 @@ func (s *minionServer) Serve() error {
 
 	s.server = grpc.NewServer()
 	pb.RegisterMinionServer(s.server, s)
+	pb.RegisterMasterToMinionServer(s.server, s)
 	err = s.server.Serve(lis)
 	return err
 }
@@ -148,3 +161,18 @@ func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Do
 	log.Printf("Wrote %v bytes to chunkWriter", bytesWritten)
 	return err
 }
+
+func (s *minionServer) Allocate(ctx context.Context, in *pb.AllocationRequest) (*pb.AllocationResponse, error) {
+	//TODO: Add an option to specify a selected context
+	allocationContext, _ := context.WithTimeout(context.Background(), time.Second * 10)
+	success, err := s.folder.AllocateSpace(allocationContext, in.UUID, int64(in.FileSize))
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed when allocating space")
+	} else {
+		return &pb.AllocationResponse{
+			Allocated:            success,
+			AvailableSpace:       s.folder.GetRemainingSpace(),
+		}, nil
+	}
+}
+

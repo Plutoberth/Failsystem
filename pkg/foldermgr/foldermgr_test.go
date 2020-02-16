@@ -79,7 +79,7 @@ func TestFolderClean(t *testing.T)  {
 //Test whether the folder reuse feature works correctly, both on a random folder and a good folder.
 func TestFolderReuse (t *testing.T) {
 	_, err := NewManagedFolder(quota, "./")
-	log.Print(err)
+
 	if err == nil {
 		t.Fatal("Trying to create a folder for the current dir was successful, even though it contains code files.")
 	}
