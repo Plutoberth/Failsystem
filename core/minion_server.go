@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,7 +77,7 @@ func (s *minionServer) Close() {
 
 func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	var (
-		file     *os.File
+		file     io.WriteCloser
 		filename string
 		req      *pb.UploadRequest
 	)
@@ -88,7 +87,7 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 	}
 	switch data := req.GetData().(type) {
 	case *pb.UploadRequest_Chunk:
-		return status.Errorf(codes.InvalidArgument, "First Upload Request must be a UUID.")
+		return status.Errorf(codes.InvalidArgument, "First Upload Request must be a UUID")
 
 	case *pb.UploadRequest_UUID:
 		filename = data.UUID
@@ -98,12 +97,9 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
 	}
 
-	if file, err = os.Create(filename); err != nil {
-		//TODO: Add code to check if UUID is in queue and valid for the user.
-		return status.Errorf(codes.Internal, "Couldn't open a file with that UUID.")
+	if file, err = s.folder.WriteToFile(filename); err != nil {
+		return status.Errorf(codes.Internal, "Couldn't open a file with that UUID")
 	}
-
-	defer file.Close()
 
 	hasher := sha256.New()
 
@@ -115,17 +111,17 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 			if err == io.EOF {
 				break
 			} else {
-				return status.Errorf(codes.Unknown, "Failed while reading from stream.")
+				return status.Errorf(codes.Unknown, "Failed while reading from stream")
 			}
 		}
 		switch data := req.GetData().(type) {
 		case *pb.UploadRequest_UUID:
-			return status.Errorf(codes.InvalidArgument, "Subsequent upload requests must be chunks.")
+			return status.Errorf(codes.InvalidArgument, "Subsequent upload requests must be chunks")
 
 		case *pb.UploadRequest_Chunk:
 			c := data.Chunk.GetContent()
 			if c == nil {
-				return status.Errorf(codes.InvalidArgument, "Content field must be populated.")
+				return status.Errorf(codes.InvalidArgument, "Content field must be populated")
 			}
 
 			if _, err := w.Write(c); err != nil {
@@ -137,22 +133,26 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 	hexHash := hex.EncodeToString(hasher.Sum(nil))
 
 	if err := stream.SendAndClose(&pb.DataHash{Type: pb.HashType_SHA256, HexHash: hexHash}); err != nil {
-		return status.Errorf(codes.Internal, "Failed while sending response.")
+		return status.Errorf(codes.Internal, "Failed while sending response")
+	}
+
+	if err := file.Close(); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
 	return nil
 }
 
 func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_DownloadFileServer) (err error) {
 	var (
-		file *os.File
+		file io.ReadCloser
 	)
 
 	if _, err := uuid.Parse(req.GetUUID()); err != nil {
 		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
 	}
 
-	if file, err = os.Open(req.GetUUID()); err != nil {
-		return status.Errorf(codes.InvalidArgument, "UUID not present")
+	if file, err = s.folder.ReadFile(req.GetUUID()); err != nil {
+		return status.Errorf(codes.NotFound, "UUID not present")
 	}
 
 	chunkWriter := NewFileChunkSenderWrapper(stream)
@@ -163,11 +163,15 @@ func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Do
 }
 
 func (s *minionServer) Allocate(ctx context.Context, in *pb.AllocationRequest) (*pb.AllocationResponse, error) {
-	//TODO: Add an option to specify a selected context
+	//TODO: Add an option to specify a selected context in the request
+	if _, err := uuid.Parse(in.GetUUID()); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
+	}
+
 	allocationContext, _ := context.WithTimeout(context.Background(), time.Second * 10)
-	success, err := s.folder.AllocateSpace(allocationContext, in.UUID, int64(in.FileSize))
+	success, err := s.folder.AllocateSpace(allocationContext, in.GetUUID(), int64(in.GetFileSize()))
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed when allocating space")
+		return nil, status.Errorf(codes.Internal, "Failed to allocate space in internal storage")
 	} else {
 		return &pb.AllocationResponse{
 			Allocated:            success,
