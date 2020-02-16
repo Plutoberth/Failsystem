@@ -29,13 +29,13 @@ type minionServer struct {
 	pb.UnimplementedMinionServer
 	pb.UnimplementedMasterToMinionServer
 	address string
-	folder foldermgr.ManagedFolder
+	folder  foldermgr.ManagedFolder
 	server  *grpc.Server
 }
 
 const (
 	defaultChunkSize uint32 = 2 << 16
-	maxPort      uint   = 2 << 16 // 65536
+	maxPort          uint   = 2 << 16 // 65536
 )
 
 //NewMinionServer - Initializes a new minion server.
@@ -46,7 +46,7 @@ func NewMinionServer(port uint, folderPath string, quota int64) (MinionServer, e
 	}
 	s.address = fmt.Sprintf("0.0.0.0:%v", port)
 
-	folder, err  := foldermgr.NewManagedFolder(quota, folderPath)
+	folder, err := foldermgr.NewManagedFolder(quota, folderPath)
 	if err != nil {
 		return nil, err
 	}
@@ -168,15 +168,19 @@ func (s *minionServer) Allocate(ctx context.Context, in *pb.AllocationRequest) (
 		return nil, status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 	}
 
-	allocationContext, _ := context.WithTimeout(context.Background(), time.Second * 10)
+	allocationContext, _ := context.WithTimeout(context.Background(), time.Second*10)
 	success, err := s.folder.AllocateSpace(allocationContext, in.GetUUID(), int64(in.GetFileSize()))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Failed to allocate space in internal storage")
 	} else {
 		return &pb.AllocationResponse{
-			Allocated:            success,
-			AvailableSpace:       s.folder.GetRemainingSpace(),
+			Allocated:      success,
+			AvailableSpace: s.folder.GetRemainingSpace(),
 		}, nil
 	}
 }
 
+func (s *minionServer) Empower(ctx context.Context, in *pb.EmpowermentRequest) (*pb.EmpowermentResponse, error) {
+	_, _ = ctx, in
+	return nil, nil
+}
