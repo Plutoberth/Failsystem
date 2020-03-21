@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"hash"
 	"io"
+	"log"
 	"os"
 
 	"github.com/pkg/errors"
@@ -15,7 +16,7 @@ import (
 
 //MinionClient interface defines methods that the caller may use to use the Minion grpc service.
 type MinionClient interface {
-	UploadData(data io.Reader, uuid string) error
+	Upload(uuid string) (io.WriteCloser, error)
 	UploadByFilename(filepath string, uuid string) error
 	DownloadFile(uuid string, targetFile string) error
 	Close() error
@@ -26,6 +27,13 @@ type minionClient struct {
 	client    pb.MinionClient
 	chunkSize int
 }
+
+type uploadManager struct {
+	hasher hash.Hash
+	stream pb.Minion_UploadFileClient
+}
+
+
 
 type HashError string
 
@@ -56,49 +64,55 @@ func (c *minionClient) Close() (err error) {
 	return err
 }
 
-func (c *minionClient) UploadData(data io.Reader, uuid string) (err error) {
-	var hasher hash.Hash = sha256.New()
-	stream, err := c.client.UploadFile(context.Background())
+func (u *uploadManager) Write(buf []byte) (n int, err error) {
+	u.hasher.Write(buf)
+	err = u.stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_Chunk{Chunk: &pb.FileChunk{Content: buf}}})
+
 	if err != nil {
-		return
+		err = errors.Wrap(err, "Failed while uploading data to the server")
+	} else {
+		n = len(buf)
 	}
-	defer stream.CloseSend()
+	return n, err
+}
 
-	if err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_UUID{UUID: uuid}}); err != nil {
-		return errors.Wrap(err, "Failed when sending headers")
-	}
-
-	buf := make([]byte, c.chunkSize)
-	for {
-		n, err := data.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return errors.Wrap(err, "Failed while copying data to buf")
-		}
-
-		hasher.Write(buf[:n])
-		err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_Chunk{Chunk: &pb.FileChunk{Content: buf[:n]}}})
-
-		if err != nil {
-			err = errors.Wrap(err, "Failed while uploading data to the server")
-		}
+func (u *uploadManager) Close() error {
+	if err := u.stream.CloseSend(); err != nil {
+		return err
 	}
 
-	resp, err := stream.CloseAndRecv()
+	resp, err := u.stream.CloseAndRecv()
 	if err != nil {
 		return errors.Wrap(err, "Failed while closing stream")
 	}
 
-	hexHash := hex.EncodeToString(hasher.Sum(nil))
+	hexHash := hex.EncodeToString(u.hasher.Sum(nil))
 	if hexHash != resp.GetHexHash() && resp.GetType() == pb.HashType_SHA256 {
+		log.Printf("UploadFile hashing: %v != %v", hexHash, resp.GetHexHash())
 		return HashError("data corrupted during transmission")
 	} else if resp.GetType() != pb.HashType_SHA256 {
+		log.Printf("UploadFile hashing: Requested check for type %v", resp.GetType().String())
 		return errors.New("dev didn't properly support different hashes")
 	}
 
 	return nil
+}
+
+func (c *minionClient) Upload(uuid string) (io.WriteCloser, error) {
+	stream, err := c.client.UploadFile(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	if err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_UUID{UUID: uuid}}); err != nil {
+		stream.CloseSend()
+		return nil, errors.Wrap(err, "Failed when sending headers")
+	}
+
+	return &uploadManager{
+		hasher: sha256.New(),
+		stream: stream,
+	}, nil
 }
 
 func (c *minionClient) UploadByFilename(filepath string, uuid string) (err error) {
@@ -111,7 +125,14 @@ func (c *minionClient) UploadByFilename(filepath string, uuid string) (err error
 	}
 	defer file.Close()
 
-	return c.UploadData(file, uuid)
+	uploadWriter, err := c.Upload(uuid)
+	if err != nil {
+		return err
+	}
+	if _, err := io.CopyBuffer(uploadWriter, file, make([]byte, c.chunkSize)); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) {
