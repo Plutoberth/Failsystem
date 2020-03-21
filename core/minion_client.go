@@ -90,7 +90,7 @@ func (c *minionClient) UploadFile(filepath string) (err error) {
 		return errors.Wrap(err, "Failed while closing stream")
 	}
 
-	valid, err := VerifyUploadResponse(resp, file)
+	valid, err := VerifyDataHash(resp, file)
 	if err != nil {
 		return errors.Wrap(err, "Failed to hash")
 	}
