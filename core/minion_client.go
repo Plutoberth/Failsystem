@@ -27,7 +27,11 @@ type minionClient struct {
 	chunkSize int
 }
 
-const chunkSize = 4096
+type HashError string
+
+func (f HashError) Error() string {
+	return string(f)
+}
 
 //NewMinionClient - Returns a MinionClient struct initialized with the string.
 func NewMinionClient(address string, chunkSize int) (MinionClient, error) {
@@ -77,7 +81,6 @@ func (c *minionClient) UploadData(data io.Reader, uuid string) (err error) {
 		hasher.Write(buf[:n])
 		err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_Chunk{Chunk: &pb.FileChunk{Content: buf[:n]}}})
 
-
 		if err != nil {
 			err = errors.Wrap(err, "Failed while uploading data to the server")
 		}
@@ -90,9 +93,9 @@ func (c *minionClient) UploadData(data io.Reader, uuid string) (err error) {
 
 	hexHash := hex.EncodeToString(hasher.Sum(nil))
 	if hexHash != resp.GetHexHash() && resp.GetType() == pb.HashType_SHA256 {
-		return errors.New("data corrupted during transmission")
+		return HashError("data corrupted during transmission")
 	} else if resp.GetType() != pb.HashType_SHA256 {
-		return errors.New("Dev didn't properly support different hashes")
+		return errors.New("dev didn't properly support different hashes")
 	}
 
 	return nil
