@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,17 +26,29 @@ type MinionServer interface {
 	Close()
 }
 
+type empowermentEntry struct {
+	subordinates []string
+	hash pb.DataHash
+}
+
 type minionServer struct {
 	pb.UnimplementedMinionServer
 	pb.UnimplementedMasterToMinionServer
 	address string
 	folder  foldermgr.ManagedFolder
 	server  *grpc.Server
+
+	mtx *sync.RWMutex
+
+	//The empowerments field represents a very low severity memory leak. The empowerment never expires, so the application
+	//will not delete the values if the UploadFile method is never called.
+	empowerments map[string]empowermentEntry
 }
 
 const (
 	defaultChunkSize uint32 = 2 << 16
 	maxPort          uint   = 2 << 16 // 65536
+	delayTime               = time.Second * 10
 )
 
 //NewMinionServer - Initializes a new minion server.
@@ -51,6 +64,9 @@ func NewMinionServer(port uint, folderPath string, quota int64) (MinionServer, e
 		return nil, err
 	}
 	s.folder = folder
+
+	s.empowerments = make(map[string]empowermentEntry)
+	s.mtx = new(sync.RWMutex)
 
 	return s, nil
 }
@@ -80,9 +96,11 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 		file     io.WriteCloser
 		filename string
 		req      *pb.UploadRequest
+		subs     []string
 	)
 
 	if req, err = stream.Recv(); err != nil {
+		log.Printf("Error receving in UploadFile: %v", err.Error())
 		return status.Errorf(codes.Internal, "Failed while receiving from stream")
 	}
 	switch data := req.GetData().(type) {
@@ -90,6 +108,11 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 		return status.Errorf(codes.InvalidArgument, "First Upload Request must be a UUID")
 
 	case *pb.UploadRequest_UUID:
+		s.mtx.RLock()
+		//nil is returned and delete is a no-op for a nonexistent key.
+		subs = s.empowerments[data.UUID].subordinates
+		delete(s.empowerments, data.UUID)
+		s.mtx.RUnlock()
 		filename = data.UUID
 	}
 
@@ -98,6 +121,7 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 	}
 
 	if file, err = s.folder.WriteToFile(filename); err != nil {
+		log.Printf("Failed to open file, %v", err)
 		return status.Errorf(codes.Internal, "Couldn't open a file with that UUID")
 	}
 
@@ -127,10 +151,15 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 			if _, err := w.Write(c); err != nil {
 				return status.Errorf(codes.Internal, "Unable to write to file")
 			}
+		default:
+			log.Printf("Error when type switching on MinionServer UploadFile, swithced on unexpected type. Value: %v", req.GetData())
+			return status.Errorf(codes.Internal, "")
 		}
 	}
 
 	hexHash := hex.EncodeToString(hasher.Sum(nil))
+
+	//TODO: Modify to work with the hash sent by the client in the empowerment
 
 	if err := stream.SendAndClose(&pb.DataHash{Type: pb.HashType_SHA256, HexHash: hexHash}); err != nil {
 		return status.Errorf(codes.Internal, "Failed while sending response")
@@ -168,8 +197,8 @@ func (s *minionServer) Allocate(ctx context.Context, in *pb.AllocationRequest) (
 		return nil, status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 	}
 
-	allocationContext, _ := context.WithTimeout(context.Background(), time.Second*10)
-	success, err := s.folder.AllocateSpace(allocationContext, in.GetUUID(), int64(in.GetFileSize()))
+	allocationContext, _ := context.WithTimeout(context.Background(), delayTime)
+	success, err := s.folder.AllocateSpace(allocationContext, in.GetUUID(), in.GetFileSize())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Failed to allocate space in internal storage")
 	} else {
@@ -182,5 +211,30 @@ func (s *minionServer) Allocate(ctx context.Context, in *pb.AllocationRequest) (
 
 func (s *minionServer) Empower(ctx context.Context, in *pb.EmpowermentRequest) (*pb.EmpowermentResponse, error) {
 	_, _ = ctx, in
-	return nil, nil
+
+	if _, err := uuid.Parse(in.GetUUID()); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid UUID")
+	}
+
+	subs := in.GetSubordinates()
+	if subs == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Subordinates not sent")
+	}
+
+	hash := in.GetHash()
+	if hash == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Hash not sent")
+	}
+
+	for _, ip := range subs {
+		if net.ParseIP(ip) == nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%v is not a valid IP address", ip)
+		}
+	}
+
+	s.mtx.Lock()
+	s.empowerments[in.GetUUID()] = empowermentEntry{subordinates: subs, hash: *in.GetHash()}
+	s.mtx.Unlock()
+
+	return &pb.EmpowermentResponse{}, nil
 }
