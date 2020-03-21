@@ -132,7 +132,8 @@ func (c *minionClient) UploadByFilename(filepath string, uuid string) (err error
 	if _, err := io.CopyBuffer(uploadWriter, file, make([]byte, c.chunkSize)); err != nil {
 		return err
 	}
-	return nil
+	
+	return uploadWriter.Close()
 }
 
 func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) {
