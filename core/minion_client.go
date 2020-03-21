@@ -2,6 +2,9 @@ package core
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"hash"
 	"io"
 	"os"
 
@@ -12,7 +15,7 @@ import (
 
 //MinionClient interface defines methods that the caller may use to use the Minion grpc service.
 type MinionClient interface {
-	UploadData(data io.ReadSeeker, uuid string) error
+	UploadData(data io.Reader, uuid string) error
 	UploadByFilename(filepath string, uuid string) error
 	DownloadFile(uuid string, targetFile string) error
 	Close() error
@@ -49,7 +52,8 @@ func (c *minionClient) Close() (err error) {
 	return err
 }
 
-func (c *minionClient) UploadData(data io.ReadSeeker, uuid string) (err error) {
+func (c *minionClient) UploadData(data io.Reader, uuid string) (err error) {
+	var hasher hash.Hash = sha256.New()
 	stream, err := c.client.UploadFile(context.Background())
 	if err != nil {
 		return
@@ -69,7 +73,10 @@ func (c *minionClient) UploadData(data io.ReadSeeker, uuid string) (err error) {
 			}
 			return errors.Wrap(err, "Failed while copying data to buf")
 		}
+
+		hasher.Write(buf[:n])
 		err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_Chunk{Chunk: &pb.FileChunk{Content: buf[:n]}}})
+
 
 		if err != nil {
 			err = errors.Wrap(err, "Failed while uploading data to the server")
@@ -81,13 +88,11 @@ func (c *minionClient) UploadData(data io.ReadSeeker, uuid string) (err error) {
 		return errors.Wrap(err, "Failed while closing stream")
 	}
 
-	valid, err := VerifyDataHash(resp, data)
-	if err != nil {
-		return errors.Wrap(err, "Failed to hash")
-	}
-
-	if valid == false {
+	hexHash := hex.EncodeToString(hasher.Sum(nil))
+	if hexHash != resp.GetHexHash() && resp.GetType() == pb.HashType_SHA256 {
 		return errors.New("data corrupted during transmission")
+	} else if resp.GetType() != pb.HashType_SHA256 {
+		return errors.New("Dev didn't properly support different hashes")
 	}
 
 	return nil
