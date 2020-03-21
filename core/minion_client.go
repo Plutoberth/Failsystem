@@ -25,7 +25,6 @@ type MinionClient interface {
 type minionClient struct {
 	conn      *grpc.ClientConn
 	client    pb.MinionClient
-	chunkSize int
 }
 
 type uploadManager struct {
@@ -41,8 +40,10 @@ func (f HashError) Error() string {
 	return string(f)
 }
 
+const chunkSize = 4096
+
 //NewMinionClient - Returns a MinionClient struct initialized with the string.
-func NewMinionClient(address string, chunkSize int) (MinionClient, error) {
+func NewMinionClient(address string) (MinionClient, error) {
 	c := new(minionClient)
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
@@ -50,7 +51,6 @@ func NewMinionClient(address string, chunkSize int) (MinionClient, error) {
 	}
 	c.conn = conn
 	c.client = pb.NewMinionClient(conn)
-	c.chunkSize = chunkSize
 	return c, nil
 }
 
@@ -129,10 +129,10 @@ func (c *minionClient) UploadByFilename(filepath string, uuid string) (err error
 	if err != nil {
 		return err
 	}
-	if _, err := io.CopyBuffer(uploadWriter, file, make([]byte, c.chunkSize)); err != nil {
+	if _, err := io.CopyBuffer(uploadWriter, file, make([]byte, chunkSize)); err != nil {
 		return err
 	}
-	
+
 	return uploadWriter.Close()
 }
 

@@ -8,7 +8,7 @@ import (
 	"github.com/plutoberth/Failsystem/core"
 )
 
-const chunkSize = 4096
+
 
 var filename = flag.String("filename", "file.test", "The file that you want to upload.")
 var port = flag.Uint("port", 1337, "The MinionServer's port.")
@@ -18,7 +18,7 @@ func main() {
 
 	address := fmt.Sprintf("localhost:%v", *port)
 
-	minion, err := core.NewMinionClient(address, chunkSize)
+	minion, err := core.NewMinionClient(address)
 
 	if err != nil {
 		log.Fatalf("Dial Failure: %v", err)
