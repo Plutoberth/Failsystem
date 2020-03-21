@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
@@ -13,7 +12,8 @@ import (
 
 //MinionClient interface defines methods that the caller may use to use the Minion grpc service.
 type MinionClient interface {
-	UploadFile(filepath string) error
+	UploadData(data io.ReadSeeker, uuid string) error
+	UploadByFilename(filepath string, uuid string) error
 	DownloadFile(uuid string, targetFile string) error
 	Close() error
 }
@@ -49,34 +49,25 @@ func (c *minionClient) Close() (err error) {
 	return err
 }
 
-func (c *minionClient) UploadFile(filepath string) (err error) {
-	var (
-		file *os.File
-	)
-
-	if file, err = os.Open(filepath); err != nil {
-		return
-	}
-	defer file.Close()
-
+func (c *minionClient) UploadData(data io.ReadSeeker, uuid string) (err error) {
 	stream, err := c.client.UploadFile(context.Background())
 	if err != nil {
 		return
 	}
 	defer stream.CloseSend()
 
-	if err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_UUID{UUID: uuid.New().String()}}); err != nil {
+	if err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_UUID{UUID: uuid}}); err != nil {
 		return errors.Wrap(err, "Failed when sending headers")
 	}
 
 	buf := make([]byte, c.chunkSize)
 	for {
-		n, err := file.Read(buf)
+		n, err := data.Read(buf)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			return errors.Wrap(err, "Failed while copying file to buf")
+			return errors.Wrap(err, "Failed while copying data to buf")
 		}
 		err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_Chunk{Chunk: &pb.FileChunk{Content: buf[:n]}}})
 
@@ -90,7 +81,7 @@ func (c *minionClient) UploadFile(filepath string) (err error) {
 		return errors.Wrap(err, "Failed while closing stream")
 	}
 
-	valid, err := VerifyDataHash(resp, file)
+	valid, err := VerifyDataHash(resp, data)
 	if err != nil {
 		return errors.Wrap(err, "Failed to hash")
 	}
@@ -100,6 +91,19 @@ func (c *minionClient) UploadFile(filepath string) (err error) {
 	}
 
 	return nil
+}
+
+func (c *minionClient) UploadByFilename(filepath string, uuid string) (err error) {
+	var (
+		file *os.File
+	)
+
+	if file, err = os.Open(filepath); err != nil {
+		return
+	}
+	defer file.Close()
+
+	return c.UploadData(file, uuid)
 }
 
 func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) {
