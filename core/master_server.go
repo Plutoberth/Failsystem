@@ -18,6 +18,7 @@ type MasterServer interface {
 
 type masterServer struct {
 	pb.UnimplementedMasterServer
+	pb.UnimplementedMinionToMasterServer
 	address string
 	server  *grpc.Server
 
@@ -55,10 +56,15 @@ func (s *masterServer) Close() {
 }
 
 
-func (s *masterServer) InitiateFileUpload(context.Context, *pb.FileUploadRequest) (*pb.FileUploadResponse, error) {
+func (s *masterServer) InitiateFileUpload(ctx context.Context, in *pb.FileUploadRequest) (*pb.FileUploadResponse, error) {
 	panic("implement me")
 }
 
-func (s *masterServer) InitiateFileRead(context.Context, *pb.FileReadRequest) (*pb.FileReadResponse, error) {
+func (s *masterServer) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (*pb.FileReadResponse, error) {
+	panic("implement me")
+}
+
+func (s *masterServer) Announce(ctx context.Context, in *pb.Announcement, opts ...grpc.CallOption) (*pb.AnnounceResponse, error) {
+
 	panic("implement me")
 }
