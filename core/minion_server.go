@@ -26,11 +26,6 @@ type MinionServer interface {
 	Close()
 }
 
-type empowermentEntry struct {
-	subordinates []string
-	hash pb.DataHash
-}
-
 type minionServer struct {
 	pb.UnimplementedMinionServer
 	pb.UnimplementedMasterToMinionServer
@@ -42,7 +37,7 @@ type minionServer struct {
 
 	//The empowerments field represents a very low severity memory leak. The empowerment never expires, so the application
 	//will not delete the values if the UploadFile method is never called.
-	empowerments map[string]empowermentEntry
+	empowerments map[string][]string
 }
 
 const (
@@ -65,7 +60,7 @@ func NewMinionServer(port uint, folderPath string, quota int64) (MinionServer, e
 	}
 	s.folder = folder
 
-	s.empowerments = make(map[string]empowermentEntry)
+	s.empowerments = make(map[string][]string)
 	s.mtx = new(sync.RWMutex)
 
 	return s, nil
@@ -91,30 +86,81 @@ func (s *minionServer) Close() {
 	}
 }
 
+//Create the subordinate uploads
+func (s *minionServer) createSubUploads(uuid string) (subWriters []io.WriteCloser, minionClients []MinionClient, err error) {
+	s.mtx.RLock()
+	subs := s.empowerments[uuid]
+	delete(s.empowerments, uuid)
+	s.mtx.RUnlock()
+	if subs != nil {
+		subWriters = make([]io.WriteCloser, len(subs))
+		minionClients = make([]MinionClient, len(subs))
+		for i, sub := range subs {
+			minionClient, err := NewMinionClient(sub)
+			minionClients[i] = minionClient
+			if err != nil {
+				log.Printf("Error when connecting to subordinate in UploadFile: %v", err)
+				return nil, nil, status.Errorf(codes.Internal, "Couldn't connect to minion server")
+			}
+
+			subWriters[i], err = minionClient.Upload(uuid)
+			if err != nil {
+				return nil, nil, status.Errorf(codes.Internal, "Failed during replication process")
+			}
+		}
+	}
+	return
+}
+
+func (s *minionServer) finalizeSubUploads(subWriters []io.WriteCloser, clients []MinionClient) error {
+	for _, subWriter := range subWriters  {
+		if err := subWriter.Close(); err != nil {
+			_, ok := err.(HashError)
+			if ok {
+				return status.Errorf(codes.Internal, "Data corrupted among servers")
+			} else {
+				log.Printf("finalizeSubUploads: Failed when closing Minion upload - %v", err)
+				return status.Errorf(codes.Internal, "Failed when finalizing replication")
+			}
+		}
+	}
+
+	for _, client := range clients {
+		if err := client.Close(); err != nil {
+			log.Printf("finalizeSubUploads: Close client - %v", err)
+			return status.Errorf(codes.Internal, "Failed when finalizing replication")
+		}
+	}
+	return nil
+}
+
 func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	var (
 		file     io.WriteCloser
 		filename string
-		req      *pb.UploadRequest
-		subs     []string
+		minionClients []MinionClient
+		subWriters     []io.WriteCloser
 	)
 
-	if req, err = stream.Recv(); err != nil {
+	if req, err := stream.Recv(); err != nil {
 		log.Printf("Error receving in UploadFile: %v", err.Error())
 		return status.Errorf(codes.Internal, "Failed while receiving from stream")
-	}
-	switch data := req.GetData().(type) {
-	case *pb.UploadRequest_Chunk:
-		return status.Errorf(codes.InvalidArgument, "First Upload Request must be a UUID")
+	} else {
+		switch data := req.GetData().(type) {
+		case *pb.UploadRequest_Chunk:
+			return status.Errorf(codes.InvalidArgument, "First Upload Request must be a UUID")
 
-	case *pb.UploadRequest_UUID:
-		s.mtx.RLock()
-		//nil is returned and delete is a no-op for a nonexistent key.
-		subs = s.empowerments[data.UUID].subordinates
-		delete(s.empowerments, data.UUID)
-		s.mtx.RUnlock()
-		filename = data.UUID
+		case *pb.UploadRequest_UUID:
+			//TODO: Using this technique is inefficient CPU-wise. The hash is performed n times.
+			//In practice, 99% of the time is in network IO, so it doesn't really matter.
+			subWriters, minionClients, err = s.createSubUploads(data.UUID)
+			if err != nil {
+				return err
+			}
+			filename = data.UUID
+		}
 	}
+
 
 	if _, err := uuid.Parse(filename); err != nil {
 		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
@@ -126,8 +172,11 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 	}
 
 	hasher := sha256.New()
-
+	//Internally, only one multiwriter will be created, concatenating previous multiwriters.
 	w := io.MultiWriter(hasher, file)
+	for _, subWriter := range subWriters  {
+		w = io.MultiWriter(w, subWriter)
+	}
 
 	for {
 		req, err := stream.Recv()
@@ -153,22 +202,27 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 			}
 		default:
 			log.Printf("Error when type switching on MinionServer UploadFile, swithced on unexpected type. Value: %v", req.GetData())
-			return status.Errorf(codes.Internal, "")
+			return status.Errorf(codes.Internal, "Unrecognized request data type")
 		}
 	}
 
-	hexHash := hex.EncodeToString(hasher.Sum(nil))
-
-	//TODO: Modify to work with the hash sent by the client in the empowerment
-
-	if err := stream.SendAndClose(&pb.DataHash{Type: pb.HashType_SHA256, HexHash: hexHash}); err != nil {
+	if err := stream.SendAndClose(&pb.DataHash{Type: pb.HashType_SHA256, HexHash: hex.EncodeToString(hasher.Sum(nil))}); err != nil {
 		return status.Errorf(codes.Internal, "Failed while sending response")
 	}
 
 	if err := file.Close(); err != nil {
-		return status.Error(codes.InvalidArgument, err.Error())
+		log.Printf("UploadFile: Failed when closing - %v", err)
+		return status.Error(codes.Internal, "Failed when finalizing the upload")
 	}
-	return nil
+
+	err = s.finalizeSubUploads(subWriters, minionClients)
+	if err != nil {
+		return err
+	}
+
+	//TODO: Notify master that the upload was successful
+
+	return err
 }
 
 func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_DownloadFileServer) (err error) {
@@ -221,11 +275,6 @@ func (s *minionServer) Empower(ctx context.Context, in *pb.EmpowermentRequest) (
 		return nil, status.Errorf(codes.InvalidArgument, "Subordinates not sent")
 	}
 
-	hash := in.GetHash()
-	if hash == nil {
-		return nil, status.Errorf(codes.InvalidArgument, "Hash not sent")
-	}
-
 	for _, ip := range subs {
 		if net.ParseIP(ip) == nil {
 			return nil, status.Errorf(codes.InvalidArgument, "%v is not a valid IP address", ip)
@@ -233,7 +282,7 @@ func (s *minionServer) Empower(ctx context.Context, in *pb.EmpowermentRequest) (
 	}
 
 	s.mtx.Lock()
-	s.empowerments[in.GetUUID()] = empowermentEntry{subordinates: subs, hash: *in.GetHash()}
+	s.empowerments[in.GetUUID()] = subs
 	s.mtx.Unlock()
 
 	return &pb.EmpowermentResponse{}, nil
