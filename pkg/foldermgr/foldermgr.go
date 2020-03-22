@@ -8,14 +8,12 @@ import (
 	"github.com/pkg/errors"
 	"io"
 	"log"
-	"math"
 	"os"
 	"path"
 	"path/filepath"
 	"sync"
 )
 
-const UNLIMITED = math.MaxInt64
 const dataFolderPerms = 600 //only r/w for the owning user
 const transfersDataFolder = "transfers"
 const managedFolderSentinel = ".managedFolder"
@@ -55,6 +53,9 @@ type ManagedFolder interface {
 	//may terminate the write and free resources if it unexpectedly runs out of data.
 	//Using ReadFile on the UUID is only valid after the returned io.WriteCloser has been closed.
 	WriteToFile(UUID string) (io.WriteCloser, error)
+
+	//Check if the UUID has an allocation.
+	CheckIfAllocated(UUID string) bool
 
 	//TODO: Add DeleteFile
 }
@@ -166,6 +167,15 @@ func (m *managedFolder) GetRemainingSpace() int64 {
 
 func (m *managedFolder) GetFolderPath() string {
 	return m.folderPath
+}
+
+func (m *managedFolder) CheckIfAllocated(UUID string) bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	if _, ok := (*m.allocs)[UUID]; ok {
+		return true
+	}
+	return false
 }
 
 func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSize int64) (bool, error) {
