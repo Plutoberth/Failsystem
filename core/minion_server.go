@@ -270,6 +270,10 @@ func (s *minionServer) Empower(ctx context.Context, in *pb.EmpowermentRequest) (
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid UUID")
 	}
 
+	if !s.folder.CheckIfAllocated(in.GetUUID()) {
+		return nil, status.Errorf(codes.InvalidArgument, "The UUID doesn't have an allocation on the server")
+	}
+
 	subs := in.GetSubordinates()
 	if subs == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Subordinates not sent")
