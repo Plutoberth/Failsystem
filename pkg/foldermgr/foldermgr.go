@@ -4,8 +4,8 @@ package foldermgr
 
 import (
 	"context"
+	"fmt"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"io"
 	"log"
 	"os"
@@ -94,18 +94,18 @@ func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 	folderPath, err := filepath.Abs(folderPath)
 
 	if err != nil {
-		return nil, errors.Errorf("\"%v\" is not a valid path", folderPath)
+		return nil, fmt.Errorf("\"%v\" is not a valid path", folderPath)
 	}
 
 	if stat, err := os.Stat(folderPath); os.IsNotExist(err) {
 		//Create all dirs required for the operation
 		if err := os.MkdirAll(filepath.Join(folderPath, transfersDataFolder), dataFolderPerms); err != nil {
 			log.Printf("Couldn't create dir for \"%v\"", err)
-			return nil, errors.Wrap(err, "Couldn't create data folder")
+			return nil, fmt.Errorf( "couldn't create data folder: %w", err)
 		}
 	} else {
 		if !stat.IsDir() {
-			return nil, errors.Errorf("\"%v\" is not a directory", folderPath)
+			return nil, fmt.Errorf("\"%v\" is not a directory", folderPath)
 		}
 
 		//Check if dir is empty
@@ -116,7 +116,7 @@ func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 		if !empty {
 			//If the folder isn't empty, but the sentinel exists, we can write to the folder.
 			if !fileExists(filepath.Join(folderPath, managedFolderSentinel)) {
-				return nil, errors.Errorf("Tried to mount on a non-empty folder \"%v\"", folderPath)
+				return nil, fmt.Errorf("Tried to mount on a non-empty folder \"%v\"", folderPath)
 			}
 		} else {
 			// Make sure that the transfer folder is empty
@@ -127,14 +127,14 @@ func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 			}
 			if err = os.Mkdir(transferPath, dataFolderPerms); err != nil {
 				log.Printf("Couldn't create dir for \"%v\"", err)
-				return nil, errors.Wrap(err, "Couldn't create transfers folder")
+				return nil, fmt.Errorf( "couldn't create transfers folder: %w", err)
 			}
 		}
 	}
 
 	f, err := os.Create(filepath.Join(folderPath, managedFolderSentinel))
 	if err != nil {
-		return nil, errors.Errorf("Couldn't create sentinel file")
+		return nil, fmt.Errorf("Couldn't create sentinel file")
 	}
 	f.Close()
 
@@ -184,11 +184,11 @@ func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSiz
 	}
 
 	if _, err := uuid.Parse(UUID); err != nil {
-		return false, errors.Errorf("\"%v\" is not a valid UUID", UUID)
+		return false, fmt.Errorf("\"%v\" is not a valid UUID", UUID)
 	}
 
 	if fileExists(path.Join(m.folderPath, UUID)) {
-		return false, errors.Errorf("\"%v\" already exists", UUID)
+		return false, fmt.Errorf("\"%v\" already exists", UUID)
 	}
 
 	entry := allocationEntry{
@@ -201,7 +201,7 @@ func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSiz
 	defer m.mtx.Unlock()
 
 	if _, ok := (*m.allocs)[UUID]; ok {
-		return false, errors.Errorf("Tried to reallocate an existing allocation")
+		return false, fmt.Errorf("Tried to reallocate an existing allocation")
 	}
 
 	m.usedAllocationBytes += entry.size
@@ -214,7 +214,7 @@ func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSiz
 func (m *managedFolder) ReadFile(UUID string) (io.ReadCloser, error) {
 	//Security note: if the UUID constraint is removed, you must check for path traversal.
 	if _, err := uuid.Parse(UUID); err != nil {
-		return nil, errors.Errorf("\"%v\" is not a valid UUID", UUID)
+		return nil, fmt.Errorf("\"%v\" is not a valid UUID", UUID)
 	}
 	return os.Open(filepath.Join(m.folderPath, UUID))
 }
@@ -222,14 +222,14 @@ func (m *managedFolder) ReadFile(UUID string) (io.ReadCloser, error) {
 func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 	//Security note: if the UUID constraint is removed, you must check for path traversal.
 	if _, err := uuid.Parse(UUID); err != nil {
-		return nil, errors.Errorf("\"%v\" is not a valid UUID", UUID)
+		return nil, fmt.Errorf("\"%v\" is not a valid UUID", UUID)
 	}
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := (*m.allocs)[UUID]
 	if !ok {
-		return nil, errors.Errorf("%v not found in allocations", UUID)
+		return nil, fmt.Errorf("%v not found in allocations", UUID)
 	}
 	entry.writtenTo <- struct{}{}
 	close(entry.writtenTo)
@@ -238,14 +238,14 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 	fpath := path.Join(folderPath, UUID)
 
 	if fileExists(fpath) {
-		return nil, errors.Errorf("%v is already being written to", UUID)
+		return nil, fmt.Errorf("%v is already being written to", UUID)
 	}
 
 	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
 		//Create dir
 		if err := os.MkdirAll(folderPath, dataFolderPerms); err != nil {
 			log.Printf("Couldn't create dir for \"%v\"", err)
-			return nil, errors.Wrap(err, "Couldn't create transfers folder")
+			return nil, fmt.Errorf( "couldn't create transfers folder: %w", err)
 		}
 	}
 
@@ -254,7 +254,7 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 
 	if err != nil {
 		log.Println(err)
-		return nil, errors.Errorf("Couldn't open \"%v\" for writing", UUID)
+		return nil, fmt.Errorf("couldn't open \"%v\" for writing", UUID)
 	}
 
 	fileToWrite := managedFile{
@@ -276,7 +276,7 @@ func (m *managedFolder) freeAllocation(entry allocationEntry) error {
 		delete(*m.allocs, entry.UUID)
 		return nil
 	} else {
-		return errors.Errorf("%v not found in the allocation list", entry.UUID)
+		return fmt.Errorf("%v not found in the allocation list", entry.UUID)
 	}
 }
 

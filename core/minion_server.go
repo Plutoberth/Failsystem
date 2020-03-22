@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"errors"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -50,7 +50,7 @@ const (
 func NewMinionServer(port uint, folderPath string, quota int64) (MinionServer, error) {
 	s := new(minionServer)
 	if port >= maxPort {
-		return nil, errors.Errorf("port must be between 0 and %v", maxPort)
+		return nil, fmt.Errorf("port must be between 0 and %v", maxPort)
 	}
 	s.address = fmt.Sprintf("0.0.0.0:%v", port)
 
@@ -115,8 +115,7 @@ func (s *minionServer) createSubUploads(uuid string) (subWriters []io.WriteClose
 func (s *minionServer) finalizeSubUploads(subWriters []io.WriteCloser, clients []MinionClient) error {
 	for _, subWriter := range subWriters  {
 		if err := subWriter.Close(); err != nil {
-			_, ok := err.(HashError)
-			if ok {
+			if errors.Is(err, HashError) {
 				return status.Errorf(codes.Internal, "Data corrupted among servers")
 			} else {
 				log.Printf("finalizeSubUploads: Failed when closing Minion upload - %v", err)

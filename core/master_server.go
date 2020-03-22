@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
 	"net"
@@ -29,7 +28,7 @@ type masterServer struct {
 func NewMasterServer(port uint, quota int64) (MasterServer, error) {
 	s := new(masterServer)
 	if port >= maxPort {
-		return nil, errors.Errorf("port must be between 0 and %v", maxPort)
+		return nil, fmt.Errorf("port must be between 0 and %v", maxPort)
 	}
 	s.address = fmt.Sprintf("0.0.0.0:%v", port)
 

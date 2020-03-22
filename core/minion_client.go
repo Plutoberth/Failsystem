@@ -4,12 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"hash"
 	"io"
 	"log"
 	"os"
 
-	"github.com/pkg/errors"
+	"errors"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
 )
@@ -32,13 +33,7 @@ type uploadManager struct {
 	stream pb.Minion_UploadFileClient
 }
 
-
-
-type HashError string
-
-func (f HashError) Error() string {
-	return string(f)
-}
+var HashError = errors.New("data corrupted during transmission")
 
 const chunkSize = 4096
 
@@ -59,7 +54,7 @@ func (c *minionClient) Close() (err error) {
 		err = c.conn.Close()
 		c.conn = nil //prevent double calls
 	} else {
-		err = errors.New("Connection has already been closed, or it was never initialized.")
+		err = errors.New("the connection was already closed, or it was never initialized")
 	}
 	return err
 }
@@ -69,7 +64,7 @@ func (u *uploadManager) Write(buf []byte) (n int, err error) {
 	err = u.stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_Chunk{Chunk: &pb.FileChunk{Content: buf}}})
 
 	if err != nil {
-		err = errors.Wrap(err, "Failed while uploading data to the server")
+		err = fmt.Errorf("failed while uploading data to the server: %w", err)
 	} else {
 		n = len(buf)
 	}
@@ -83,13 +78,13 @@ func (u *uploadManager) Close() error {
 
 	resp, err := u.stream.CloseAndRecv()
 	if err != nil {
-		return errors.Wrap(err, "Failed while closing stream")
+		return fmt.Errorf("failed while closing stream: %w", err)
 	}
 
 	hexHash := hex.EncodeToString(u.hasher.Sum(nil))
 	if hexHash != resp.GetHexHash() && resp.GetType() == pb.HashType_SHA256 {
 		log.Printf("UploadFile hashing: %v != %v", hexHash, resp.GetHexHash())
-		return HashError("data corrupted during transmission")
+		return HashError
 	} else if resp.GetType() != pb.HashType_SHA256 {
 		log.Printf("UploadFile hashing: Requested check for type %v", resp.GetType().String())
 		return errors.New("dev didn't properly support different hashes")
@@ -106,7 +101,7 @@ func (c *minionClient) Upload(uuid string) (io.WriteCloser, error) {
 
 	if err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_UUID{UUID: uuid}}); err != nil {
 		stream.CloseSend()
-		return nil, errors.Wrap(err, "Failed when sending headers")
+		return nil, fmt.Errorf( "failed when sending headers: %w", err)
 	}
 
 	return &uploadManager{
@@ -142,7 +137,7 @@ func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) 
 	)
 
 	if file, err = os.Create(targetFile); err != nil {
-		return errors.Wrapf(err, "Failed to open %v", targetFile)
+		return fmt.Errorf("failed to open %v: %w", targetFile, err)
 	}
 
 	defer file.Close()
@@ -152,7 +147,7 @@ func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) 
 	})
 
 	if err != nil {
-		return errors.Wrap(err, "Failed while sending download request")
+		return fmt.Errorf( "failed while sending download request: %w", err)
 	}
 
 	for {
@@ -161,12 +156,12 @@ func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) 
 			if err == io.EOF {
 				break
 			} else {
-				return errors.Wrap(err, "Failed while reading from stream")
+				return fmt.Errorf( "failed while reading from stream: %w", err)
 			}
 		}
 		c := req.Content
 		if _, err = file.Write(c); err != nil {
-			return errors.Wrapf(err, "Failed while writing to %v", targetFile)
+			return fmt.Errorf("failed while writing to %v: %w", targetFile, err)
 		}
 	}
 
