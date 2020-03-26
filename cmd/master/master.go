@@ -19,7 +19,7 @@ func main() {
 		UUID:           "notauid45",
 		LastIp:         "129.231.234.12",
 		AvailableSpace: "30000000",
-		Date:           time.Time{},
+		LastUpdate:     time.Time{},
 	}); err != nil {
 		log.Fatal(err)
 	}
