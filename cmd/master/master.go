@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"github.com/plutoberth/Failsystem/core/master"
-	"github.com/plutoberth/Failsystem/core/minion"
 	"log"
 )
 

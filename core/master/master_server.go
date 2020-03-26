@@ -48,6 +48,7 @@ func (s *server) Serve() error {
 
 	s.server = grpc.NewServer()
 	pb.RegisterMasterServer(s.server, s)
+	pb.RegisterMinionToMasterServer(s.server, s)
 	err = s.server.Serve(lis)
 	return err
 }
@@ -67,18 +68,19 @@ func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (
 	panic("implement me")
 }
 
-func (s *server) Announce(ctx context.Context, in *pb.Announcement, opts ...grpc.CallOption) (*pb.AnnounceResponse, error) {
+func (s *server) Announce(ctx context.Context, in *pb.Announcement) (*pb.AnnounceResponse, error) {
 	panic("implement me")
 }
 
-func (s *server) Beat(ctx context.Context, in *pb.Heartbeat, opts ...grpc.CallOption) (*pb.HeartBeatResponse, error) {
+func (s *server) Beat(ctx context.Context, in *pb.Heartbeat) (*pb.HeartBeatResponse, error) {
 	caller, ok := peer.FromContext(ctx)
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "Couldn't fetch IP address for peer")
 	}
-	err :=s.db.UpdateServerEntry(ctx, ServerEntry{
+
+	err := s.db.UpdateServerEntry(ctx, ServerEntry{
 		UUID:           in.GetUUID(),
-		Ip:             caller.Addr.String(),
+		Ip:             caller.Addr.(*net.TCPAddr).IP.String(),
 		AvailableSpace: in.GetAvailableSpace(),
 	})
 	if err != nil {
@@ -88,4 +90,3 @@ func (s *server) Beat(ctx context.Context, in *pb.Heartbeat, opts ...grpc.CallOp
 
 	return &pb.HeartBeatResponse{}, nil
 }
-

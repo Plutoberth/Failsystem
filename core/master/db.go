@@ -3,7 +3,6 @@ package master
 import (
 	"context"
 	"fmt"
-	"github.com/plutoberth/Failsystem/core/minion"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -30,6 +29,20 @@ type FileEntry struct {
 	ServerUUIDs []byte `bson:"ServerUUIDs"`
 }
 
+type Lease struct {
+	FileUUID  string `bson:"_id"`
+	GrantedTo string `bson:"GrantedTo"`
+}
+
+type Operation int
+
+const (
+	Upload      Operation = 1
+	Download    Operation = 2
+	Delete      Operation = 3
+	Replication Operation = 4
+)
+
 type mongoDataStore struct {
 	db *mongo.Database
 }
@@ -39,7 +52,7 @@ const (
 	fileCollection   = "files"
 	expiryIndex = "expiryIndex"
 
-	serverTTL = minion.HeartbeatInterval * 6
+	serverTTL = 30
 )
 
 func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
