@@ -26,6 +26,8 @@ service MasterToMinion {
 service MinionToMaster {
     //Announce the Minion's existence to the Master.
     rpc Announce(Announcement) returns (AnnounceResponse);
+    //Beat periodically to indicate that the minion is still alive.
+    rpc Beat(Heartbeat) returns (HeartBeatResponse);
 }
 
 enum HashType {
@@ -106,9 +108,18 @@ message FileEntry {
 }
 
 message Announcement {
+    //UUID of the minion server
     string UUID = 1;
     repeated FileEntry entries = 2;
     int64 availableSpace = 3;
 }
 
 message AnnounceResponse {}
+
+message Heartbeat {
+    string UUID = 1;
+    int64 availableSpace = 2;
+}
+
+message HeartBeatResponse {}
+
