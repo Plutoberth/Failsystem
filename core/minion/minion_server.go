@@ -8,8 +8,10 @@ import (
 	"github.com/plutoberth/Failsystem/core/streams"
 	"github.com/plutoberth/Failsystem/pkg/foldermgr"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -31,6 +33,7 @@ type server struct {
 	pb.UnimplementedMinionServer
 	pb.UnimplementedMasterToMinionServer
 	address string
+	uuid    string
 	folder  foldermgr.ManagedFolder
 	server  *grpc.Server
 
@@ -45,6 +48,7 @@ const (
 	defaultChunkSize uint32 = 2 << 16
 	maxPort          uint   = 2 << 16 // 65536
 	delayTime               = time.Second * 10
+	uuidFile                = "uuid"
 )
 
 //NewServer - Initializes a new minion server.
@@ -64,6 +68,25 @@ func NewServer(port uint, folderPath string, quota int64) (Server, error) {
 	s.empowerments = make(map[string][]string)
 	s.mtx = new(sync.RWMutex)
 
+	if readUuid, err := ioutil.ReadFile(uuidFile); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		} else {
+			log.Printf("Creating a new UUID file")
+			uu, _ := uuid.NewUUID()
+			if err = ioutil.WriteFile(uuidFile, []byte(uu.String()), 0600); err != nil {
+				return nil, err
+			}
+			s.uuid = uu.String()
+		}
+	} else {
+		if _, err := uuid.Parse(string(readUuid)); err == nil {
+			s.uuid = string(readUuid)
+		} else {
+			return nil, fmt.Errorf("couldn't parse uuid file: %v", err)
+		}
+	}
+	log.Printf("Server created on UUID: %s", s.uuid)
 	return s, nil
 }
 
@@ -114,7 +137,7 @@ func (s *server) createSubUploads(uuid string) (subWriters []io.WriteCloser, min
 }
 
 func (s *server) finalizeSubUploads(subWriters []io.WriteCloser, clients []Client) error {
-	for _, subWriter := range subWriters  {
+	for _, subWriter := range subWriters {
 		if err := subWriter.Close(); err != nil {
 			if errors.Is(err, HashError) {
 				return status.Errorf(codes.Internal, "Data corrupted among servers")
@@ -136,10 +159,10 @@ func (s *server) finalizeSubUploads(subWriters []io.WriteCloser, clients []Clien
 
 func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	var (
-		file     io.WriteCloser
-		filename string
+		file          io.WriteCloser
+		filename      string
 		minionClients []Client
-		subWriters     []io.WriteCloser
+		subWriters    []io.WriteCloser
 	)
 
 	if req, err := stream.Recv(); err != nil {
@@ -161,7 +184,6 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 		}
 	}
 
-
 	if _, err := uuid.Parse(filename); err != nil {
 		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
 	}
@@ -174,7 +196,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	hasher := sha256.New()
 	//Internally, only one multiwriter will be created, concatenating previous multiwriters.
 	w := io.MultiWriter(hasher, file)
-	for _, subWriter := range subWriters  {
+	for _, subWriter := range subWriters {
 		w = io.MultiWriter(w, subWriter)
 	}
 
