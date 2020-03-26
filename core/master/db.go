@@ -11,15 +11,15 @@ import (
 
 type Datastore interface {
 	//LastUpdate shall be automatically updated.
-	UpdateServerEntry(entry ServerEntry) error
-	GetServerEntry(UUID string) (*ServerEntry, error)
-	UpdateFileEntry(entry FileEntry) error
+	UpdateServerEntry(ctx context.Context, entry ServerEntry) error
+	GetServerEntry(ctx context.Context, UUID string) (*ServerEntry, error)
+	UpdateFileEntry(ctx context.Context, entry FileEntry) error
 }
 
 type ServerEntry struct {
 	UUID           string `bson:"_id"`
 	Ip             string
-	AvailableSpace string
+	AvailableSpace int64
 	LastUpdate     time.Time
 }
 
@@ -69,9 +69,9 @@ func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
 
 //TODO:Fix contexts
 
-func (m *mongoDataStore) UpdateServerEntry(entry ServerEntry) error {
+func (m *mongoDataStore) UpdateServerEntry(ctx context.Context, entry ServerEntry) error {
 	entry.LastUpdate = time.Now()
-	_, err := m.db.Collection(serverCollection).UpdateOne(context.Background(), bson.M{"_id": entry.UUID},
+	_, err := m.db.Collection(serverCollection).UpdateOne(ctx, bson.M{"_id": entry.UUID},
 		bson.M{"$set": entry}, options.Update().SetUpsert(true))
 	if err != nil {
 		//Intentionally not wrapping so callers wouldn't depend on error
@@ -81,9 +81,9 @@ func (m *mongoDataStore) UpdateServerEntry(entry ServerEntry) error {
 	return nil
 }
 
-func (m *mongoDataStore) GetServerEntry(UUID string) (*ServerEntry, error) {
+func (m *mongoDataStore) GetServerEntry(ctx context.Context, UUID string) (*ServerEntry, error) {
 	var res = new(ServerEntry)
-	findResult := m.db.Collection(serverCollection).FindOne(context.Background(), bson.M{"_id": UUID}, options.FindOne())
+	findResult := m.db.Collection(serverCollection).FindOne(ctx, bson.M{"_id": UUID}, options.FindOne())
 	if findResult.Err() != nil {
 		return nil, fmt.Errorf("find failed: %v", findResult.Err())
 	}

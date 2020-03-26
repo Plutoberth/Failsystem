@@ -15,16 +15,16 @@ func main() {
 		log.Fatalf("failed to connect to MongoDB: %v", err)
 	}
 
-	if err := mongoDal.UpdateServerEntry(master.ServerEntry{
+	if err := mongoDal.UpdateServerEntry(context.Background(), master.ServerEntry{
 		UUID:           "notauid45",
-		LastIp:         "129.231.234.12",
+		Ip:         "129.231.234.12",
 		AvailableSpace: "30000000",
 		LastUpdate:     time.Time{},
 	}); err != nil {
 		log.Fatal(err)
 	}
 
-	if res, err := mongoDal.GetServerEntry("notauid45"); err != nil {
+	if res, err := mongoDal.GetServerEntry(context.Background(), "notauid45"); err != nil {
 		log.Fatal(err)
 	} else {
 		fmt.Printf("%+v", *res)

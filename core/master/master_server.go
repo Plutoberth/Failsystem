@@ -5,6 +5,10 @@ import (
 	"fmt"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
+	"log"
 	"net"
 	"time"
 )
@@ -74,3 +78,22 @@ func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (
 func (s *server) Announce(ctx context.Context, in *pb.Announcement, opts ...grpc.CallOption) (*pb.AnnounceResponse, error) {
 	panic("implement me")
 }
+
+func (s *server) Beat(ctx context.Context, in *pb.Heartbeat, opts ...grpc.CallOption) (*pb.HeartBeatResponse, error) {
+	caller, ok := peer.FromContext(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "Couldn't fetch IP address for peer")
+	}
+	err :=s.db.UpdateServerEntry(ctx, ServerEntry{
+		UUID:           in.GetUUID(),
+		Ip:             caller.Addr.String(),
+		AvailableSpace: in.GetAvailableSpace(),
+	})
+	if err != nil {
+		log.Printf("Failed when writing heartbeat to db: %v", err)
+		return nil, status.Errorf(codes.Internal, "Failed to update database")
+	}
+
+	return &pb.HeartBeatResponse{}, nil
+}
+
