@@ -101,7 +101,7 @@ func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 		//Create all dirs required for the operation
 		if err := os.MkdirAll(filepath.Join(folderPath, transfersDataFolder), dataFolderPerms); err != nil {
 			log.Printf("Couldn't create dir for \"%v\"", err)
-			return nil, fmt.Errorf( "couldn't create data folder: %w", err)
+			return nil, fmt.Errorf("couldn't create data folder: %w", err)
 		}
 	} else {
 		if !stat.IsDir() {
@@ -127,7 +127,7 @@ func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 			}
 			if err = os.Mkdir(transferPath, dataFolderPerms); err != nil {
 				log.Printf("Couldn't create dir for \"%v\"", err)
-				return nil, fmt.Errorf( "couldn't create transfers folder: %w", err)
+				return nil, fmt.Errorf("couldn't create transfers folder: %w", err)
 			}
 		}
 	}
@@ -245,7 +245,7 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 		//Create dir
 		if err := os.MkdirAll(folderPath, dataFolderPerms); err != nil {
 			log.Printf("Couldn't create dir for \"%v\"", err)
-			return nil, fmt.Errorf( "couldn't create transfers folder: %w", err)
+			return nil, fmt.Errorf("couldn't create transfers folder: %w", err)
 		}
 	}
 

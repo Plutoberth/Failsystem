@@ -24,8 +24,8 @@ type Client interface {
 }
 
 type client struct {
-	conn      *grpc.ClientConn
-	client    pb.MinionClient
+	conn   *grpc.ClientConn
+	client pb.MinionClient
 }
 
 type uploadManager struct {
@@ -101,7 +101,7 @@ func (c *client) Upload(uuid string) (io.WriteCloser, error) {
 
 	if err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_UUID{UUID: uuid}}); err != nil {
 		stream.CloseSend()
-		return nil, fmt.Errorf( "failed when sending headers: %w", err)
+		return nil, fmt.Errorf("failed when sending headers: %w", err)
 	}
 
 	return &uploadManager{
@@ -147,7 +147,7 @@ func (c *client) DownloadFile(uuid string, targetFile string) (err error) {
 	})
 
 	if err != nil {
-		return fmt.Errorf( "failed while sending download request: %w", err)
+		return fmt.Errorf("failed while sending download request: %w", err)
 	}
 
 	for {
@@ -156,7 +156,7 @@ func (c *client) DownloadFile(uuid string, targetFile string) (err error) {
 			if err == io.EOF {
 				break
 			} else {
-				return fmt.Errorf( "failed while reading from stream: %w", err)
+				return fmt.Errorf("failed while reading from stream: %w", err)
 			}
 		}
 		c := req.Content

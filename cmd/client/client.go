@@ -7,8 +7,6 @@ import (
 	"log"
 )
 
-
-
 var filename = flag.String("filename", "file.test", "The file that you want to upload.")
 var port = flag.Uint("port", 1337, "The Server's port.")
 
