@@ -2,40 +2,31 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
+	"github.com/plutoberth/Failsystem/core/master"
 	"log"
-	"net"
-
-	pb "github.com/plutoberth/Failsystem/model"
-	"google.golang.org/grpc"
+	"time"
 )
-
-var (
-	port = flag.Int("port", 1337, "The server's port.")
-)
-
-type server struct {
-	pb.UnimplementedMasterServer
-}
-
-func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadRequest) (*pb.FileUploadResponse, error) {
-	return &pb.FileUploadResponse{}, nil
-}
-
-func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (*pb.FileReadResponse, error) {
-	fmt.Println("Got message: ", in.GetUUID())
-	return &pb.FileReadResponse{}, nil
-}
 
 func main() {
-	flag.Parse()
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", *port))
+	fmt.Println("Connected to MongoDB!")
+	mongoDal, err := master.NewMongoDatastore(context.Background(), "192.168.99.100:27017")
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		log.Fatalf("failed to connect to MongoDB: %v", err)
 	}
 
-	grpcServer := grpc.NewServer()
-	pb.RegisterMasterServer(grpcServer, &server{})
-	grpcServer.Serve(lis)
+	if err := mongoDal.UpdateServerEntry(master.ServerEntry{
+		UUID:           "notauid45",
+		LastIp:         "129.231.234.12",
+		AvailableSpace: "30000000",
+		Date:           time.Time{},
+	}); err != nil {
+		log.Fatal(err)
+	}
+
+	if res, err := mongoDal.GetServerEntry("notauid45"); err != nil {
+		log.Fatal(err)
+	} else {
+		fmt.Printf("%+v", *res)
+	}
 }

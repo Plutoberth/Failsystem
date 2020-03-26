@@ -31,8 +31,22 @@ const (
 	fileCollection   = "files"
 )
 
-func NewMongoDatastore(client *mongo.Client) Datastore {
-	return &mongoDataStore{client.Database("failnet")}
+func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
+	clientOptions := options.Client().ApplyURI(fmt.Sprintf("mongodb://%s", address)).
+		SetAuth(options.Credential{Username: "root", Password: "example"})
+
+	// Connect to MongoDB
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect: %w", err)
+	}
+
+	// Check the connection
+	err = client.Ping(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ping: %w", err)
+	}
+	return &mongoDataStore{client.Database("failnet")}, nil
 }
 
 func (m *mongoDataStore) UpdateServerEntry(entry ServerEntry) error {
