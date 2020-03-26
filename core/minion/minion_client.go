@@ -1,4 +1,4 @@
-package core
+package minion
 
 import (
 	"context"
@@ -15,15 +15,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-//MinionClient interface defines methods that the caller may use to use the Minion grpc service.
-type MinionClient interface {
+//Client interface defines methods that the caller may use to use the Minion grpc service.
+type Client interface {
 	Upload(uuid string) (io.WriteCloser, error)
 	UploadByFilename(filepath string, uuid string) error
 	DownloadFile(uuid string, targetFile string) error
 	Close() error
 }
 
-type minionClient struct {
+type client struct {
 	conn      *grpc.ClientConn
 	client    pb.MinionClient
 }
@@ -37,9 +37,9 @@ var HashError = errors.New("data corrupted during transmission")
 
 const chunkSize = 4096
 
-//NewMinionClient - Returns a MinionClient struct initialized with the string.
-func NewMinionClient(address string) (MinionClient, error) {
-	c := new(minionClient)
+//NewClient - Returns a Client struct initialized with the string.
+func NewClient(address string) (Client, error) {
+	c := new(client)
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		return c, err
@@ -49,7 +49,7 @@ func NewMinionClient(address string) (MinionClient, error) {
 	return c, nil
 }
 
-func (c *minionClient) Close() (err error) {
+func (c *client) Close() (err error) {
 	if c.conn != nil {
 		err = c.conn.Close()
 		c.conn = nil //prevent double calls
@@ -93,7 +93,7 @@ func (u *uploadManager) Close() error {
 	return nil
 }
 
-func (c *minionClient) Upload(uuid string) (io.WriteCloser, error) {
+func (c *client) Upload(uuid string) (io.WriteCloser, error) {
 	stream, err := c.client.UploadFile(context.Background())
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func (c *minionClient) Upload(uuid string) (io.WriteCloser, error) {
 	}, nil
 }
 
-func (c *minionClient) UploadByFilename(filepath string, uuid string) (err error) {
+func (c *client) UploadByFilename(filepath string, uuid string) (err error) {
 	var (
 		file *os.File
 	)
@@ -131,7 +131,7 @@ func (c *minionClient) UploadByFilename(filepath string, uuid string) (err error
 	return uploadWriter.Close()
 }
 
-func (c *minionClient) DownloadFile(uuid string, targetFile string) (err error) {
+func (c *client) DownloadFile(uuid string, targetFile string) (err error) {
 	var (
 		file *os.File
 	)

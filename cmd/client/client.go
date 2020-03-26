@@ -3,22 +3,21 @@ package main
 import (
 	"flag"
 	"fmt"
+	minion2 "github.com/plutoberth/Failsystem/core/minion"
 	"log"
-
-	"github.com/plutoberth/Failsystem/core"
 )
 
 
 
 var filename = flag.String("filename", "file.test", "The file that you want to upload.")
-var port = flag.Uint("port", 1337, "The MinionServer's port.")
+var port = flag.Uint("port", 1337, "The Server's port.")
 
 func main() {
 	flag.Parse()
 
 	address := fmt.Sprintf("localhost:%v", *port)
 
-	minion, err := core.NewMinionClient(address)
+	minion, err := minion2.NewClient(address)
 
 	if err != nil {
 		log.Fatalf("Dial Failure: %v", err)

@@ -1,10 +1,11 @@
-package core
+package minion
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/plutoberth/Failsystem/core/streams"
 	"github.com/plutoberth/Failsystem/pkg/foldermgr"
 	"io"
 	"log"
@@ -20,13 +21,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-//MinionServer interface defines methods that the caller may use to host the Minion grpc service.
-type MinionServer interface {
+//Server interface defines methods that the caller may use to host the Minion grpc service.
+type Server interface {
 	Serve() error
 	Close()
 }
 
-type minionServer struct {
+type server struct {
 	pb.UnimplementedMinionServer
 	pb.UnimplementedMasterToMinionServer
 	address string
@@ -46,9 +47,9 @@ const (
 	delayTime               = time.Second * 10
 )
 
-//NewMinionServer - Initializes a new minion server.
-func NewMinionServer(port uint, folderPath string, quota int64) (MinionServer, error) {
-	s := new(minionServer)
+//NewServer - Initializes a new minion server.
+func NewServer(port uint, folderPath string, quota int64) (Server, error) {
+	s := new(server)
 	if port >= maxPort {
 		return nil, fmt.Errorf("port must be between 0 and %v", maxPort)
 	}
@@ -66,7 +67,7 @@ func NewMinionServer(port uint, folderPath string, quota int64) (MinionServer, e
 	return s, nil
 }
 
-func (s *minionServer) Serve() error {
+func (s *server) Serve() error {
 	lis, err := net.Listen("tcp", s.address)
 	if err != nil {
 		return err
@@ -79,7 +80,7 @@ func (s *minionServer) Serve() error {
 	return err
 }
 
-func (s *minionServer) Close() {
+func (s *server) Close() {
 	if s.server != nil {
 		s.server.Stop()
 		s.server = nil
@@ -87,16 +88,16 @@ func (s *minionServer) Close() {
 }
 
 //Create the subordinate uploads
-func (s *minionServer) createSubUploads(uuid string) (subWriters []io.WriteCloser, minionClients []MinionClient, err error) {
+func (s *server) createSubUploads(uuid string) (subWriters []io.WriteCloser, minionClients []Client, err error) {
 	s.mtx.RLock()
 	subs := s.empowerments[uuid]
 	delete(s.empowerments, uuid)
 	s.mtx.RUnlock()
 	if subs != nil {
 		subWriters = make([]io.WriteCloser, len(subs))
-		minionClients = make([]MinionClient, len(subs))
+		minionClients = make([]Client, len(subs))
 		for i, sub := range subs {
-			minionClient, err := NewMinionClient(sub)
+			minionClient, err := NewClient(sub)
 			minionClients[i] = minionClient
 			if err != nil {
 				log.Printf("Error when connecting to subordinate in UploadFile: %v", err)
@@ -112,7 +113,7 @@ func (s *minionServer) createSubUploads(uuid string) (subWriters []io.WriteClose
 	return
 }
 
-func (s *minionServer) finalizeSubUploads(subWriters []io.WriteCloser, clients []MinionClient) error {
+func (s *server) finalizeSubUploads(subWriters []io.WriteCloser, clients []Client) error {
 	for _, subWriter := range subWriters  {
 		if err := subWriter.Close(); err != nil {
 			if errors.Is(err, HashError) {
@@ -133,11 +134,11 @@ func (s *minionServer) finalizeSubUploads(subWriters []io.WriteCloser, clients [
 	return nil
 }
 
-func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
+func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	var (
 		file     io.WriteCloser
 		filename string
-		minionClients []MinionClient
+		minionClients []Client
 		subWriters     []io.WriteCloser
 	)
 
@@ -200,7 +201,7 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 				return status.Errorf(codes.Internal, "Unable to write to file")
 			}
 		default:
-			log.Printf("Error when type switching on MinionServer UploadFile, swithced on unexpected type. Value: %v", req.GetData())
+			log.Printf("Error when type switching on Server UploadFile, swithced on unexpected type. Value: %v", req.GetData())
 			return status.Errorf(codes.Internal, "Unrecognized request data type")
 		}
 	}
@@ -224,7 +225,7 @@ func (s *minionServer) UploadFile(stream pb.Minion_UploadFileServer) (err error)
 	return err
 }
 
-func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_DownloadFileServer) (err error) {
+func (s *server) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_DownloadFileServer) (err error) {
 	var (
 		file io.ReadCloser
 	)
@@ -237,14 +238,14 @@ func (s *minionServer) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Do
 		return status.Errorf(codes.NotFound, "UUID not present")
 	}
 
-	chunkWriter := NewFileChunkSenderWrapper(stream)
+	chunkWriter := streams.NewFileChunkSenderWrapper(stream)
 	buf := make([]byte, defaultChunkSize)
 	bytesWritten, err := io.CopyBuffer(chunkWriter, file, buf)
 	log.Printf("Wrote %v bytes to chunkWriter", bytesWritten)
 	return err
 }
 
-func (s *minionServer) Allocate(ctx context.Context, in *pb.AllocationRequest) (*pb.AllocationResponse, error) {
+func (s *server) Allocate(ctx context.Context, in *pb.AllocationRequest) (*pb.AllocationResponse, error) {
 	//TODO: Add an option to specify a selected context in the request
 	if _, err := uuid.Parse(in.GetUUID()); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
@@ -262,7 +263,7 @@ func (s *minionServer) Allocate(ctx context.Context, in *pb.AllocationRequest) (
 	}
 }
 
-func (s *minionServer) Empower(ctx context.Context, in *pb.EmpowermentRequest) (*pb.EmpowermentResponse, error) {
+func (s *server) Empower(ctx context.Context, in *pb.EmpowermentRequest) (*pb.EmpowermentResponse, error) {
 	_, _ = ctx, in
 
 	if _, err := uuid.Parse(in.GetUUID()); err != nil {

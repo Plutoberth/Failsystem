@@ -106,8 +106,9 @@ message FileEntry {
 }
 
 message Announcement {
-    repeated FileEntry entries = 1;
-    int64 availableSpace = 2;
+    string UUID = 1;
+    repeated FileEntry entries = 2;
+    int64 availableSpace = 3;
 }
 
 message AnnounceResponse {}
