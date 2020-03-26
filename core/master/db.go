@@ -92,4 +92,11 @@ func (m *mongoDataStore) GetServerEntry(ctx context.Context, UUID string) (*Serv
 	}
 	return res, nil
 }
+
+func (m *mongoDataStore) UpdateFileEntry(ctx context.Context, entry FileEntry) error {
+	_, err := m.db.Collection(fileCollection).InsertOne(ctx, entry, options.InsertOne())
+	if err != nil {
+		return fmt.Errorf("update file failed: %v", err)
+	}
+	return nil
 }
