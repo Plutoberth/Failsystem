@@ -3,6 +3,7 @@ package master
 import (
 	"context"
 	"fmt"
+	"github.com/plutoberth/Failsystem/core/minion"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -18,15 +19,15 @@ type Datastore interface {
 
 type ServerEntry struct {
 	UUID           string `bson:"_id"`
-	Ip             string
-	AvailableSpace int64
-	LastUpdate     time.Time
+	Ip             string `bson:"Ip"`
+	AvailableSpace int64 `bson:"AvailableSpace"`
+	LastUpdate     time.Time `bson:"LastUpdate"`
 }
 
 type FileEntry struct {
 	UUID        string `bson:"_id"`
-	Size        int64
-	ServerUUIDs []byte
+	Size        int64 `bson:"Size"`
+	ServerUUIDs []byte `bson:"ServerUUIDs"`
 }
 
 type mongoDataStore struct {
@@ -36,8 +37,9 @@ type mongoDataStore struct {
 const (
 	serverCollection = "servers"
 	fileCollection   = "files"
+	expiryIndex = "expiryIndex"
 
-	serverTTL = 360
+	serverTTL = minion.HeartbeatInterval * 6
 )
 
 func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
@@ -57,8 +59,10 @@ func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
 	}
 
 	database := client.Database("failnet")
-	_, err = database.Collection(serverCollection).Indexes().CreateOne(context.Background(),
-		mongo.IndexModel{Keys: bson.M{"LastUpdate": 1}, Options: options.Index().SetExpireAfterSeconds(serverTTL)},
+	_, _ = database.Collection(serverCollection).Indexes().DropOne(ctx, expiryIndex, options.DropIndexes())
+	_, err = database.Collection(serverCollection).Indexes().CreateOne(ctx,
+		mongo.IndexModel{Keys: bson.M{"LastUpdate": 1},
+			Options: options.Index().SetExpireAfterSeconds(serverTTL).SetName(expiryIndex)},
 		options.CreateIndexes())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index: %v", err)
