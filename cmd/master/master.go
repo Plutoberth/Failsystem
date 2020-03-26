@@ -2,31 +2,27 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"flag"
 	"github.com/plutoberth/Failsystem/core/master"
+	"github.com/plutoberth/Failsystem/core/minion"
 	"log"
-	"time"
 )
 
+var port = flag.Uint("port", 1337, "The Server's port.")
+
 func main() {
-	fmt.Println("Connected to MongoDB!")
+	flag.Parse()
 	mongoDal, err := master.NewMongoDatastore(context.Background(), "192.168.99.100:27017")
 	if err != nil {
-		log.Fatalf("failed to connect to MongoDB: %v", err)
+		log.Fatalf("Failed to connect to MongoDB: %v", err)
+	}
+	server, err := master.NewServer(*port, mongoDal)
+	if err != nil {
+		log.Fatalf("Failed while establishing server: %v", err)
 	}
 
-	if err := mongoDal.UpdateServerEntry(context.Background(), master.ServerEntry{
-		UUID:           "notauid45",
-		Ip:         "129.231.234.12",
-		AvailableSpace: "30000000",
-		LastUpdate:     time.Time{},
-	}); err != nil {
-		log.Fatal(err)
-	}
-
-	if res, err := mongoDal.GetServerEntry(context.Background(), "notauid45"); err != nil {
-		log.Fatal(err)
-	} else {
-		fmt.Printf("%+v", *res)
+	err = server.Serve()
+	if err != nil {
+		log.Fatalf("Failed afrer opening server: %v", err)
 	}
 }

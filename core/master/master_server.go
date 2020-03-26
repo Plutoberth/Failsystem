@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc/status"
 	"log"
 	"net"
-	"time"
 )
 
 //Server interface defines methods that the caller may use to host the Master grpc service.
@@ -27,17 +26,10 @@ type server struct {
 	db      Datastore
 }
 
-type dbServer struct {
-	UUID           string
-	AvailableSpace int64
-	LastIp         string
-	LastHeartbeat  time.Time
-}
-
 const maxPort uint = 2 << 16 // 65536
 
 //NewServer - Initializes a new master Server.
-func NewServer(port uint, quota int64, db Datastore) (Server, error) {
+func NewServer(port uint, db Datastore) (Server, error) {
 	s := new(server)
 	if port >= maxPort {
 		return nil, fmt.Errorf("port must be between 0 and %v", maxPort)
