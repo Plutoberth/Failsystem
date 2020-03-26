@@ -1,7 +1,7 @@
-package core
+package streams
 
 import (
-	"github.com/pkg/errors"
+	"errors"
 
 	pb "github.com/plutoberth/Failsystem/model"
 )
@@ -29,7 +29,7 @@ func NewFileChunkSenderWrapper(Stream FileChunkSender) FileChunkSenderWrapper {
 
 func (s *fileChunkSenderWrapper) Write(p []byte) (n int, err error) {
 	if s.stream == nil {
-		return 0, errors.New("Wrapper must be initialized with stream")
+		return 0, errors.New("wrapper must be initialized with stream")
 	}
 	if err := s.stream.Send(&pb.FileChunk{Content: p}); err != nil {
 		return 0, err

@@ -23,6 +23,13 @@ service MasterToMinion {
     rpc Empower (EmpowermentRequest) returns (EmpowermentResponse);
 }
 
+service MinionToMaster {
+    //Announce the Minion's existence to the Master.
+    rpc Announce(Announcement) returns (AnnounceResponse);
+    //Beat periodically to indicate that the minion is still alive.
+    rpc Beat(Heartbeat) returns (HeartBeatResponse);
+}
+
 enum HashType {
     STRLEN = 0; //https://news-web.php.net/php.internals/70691
     SHA1 = 1;
@@ -93,3 +100,26 @@ message EmpowermentRequest {
 message EmpowermentResponse {
     //Left empty for now. If the UUID to empower was not found, the minion should respond with an error.
 }
+
+message FileEntry {
+    string UUID = 1;
+    int64 fileSize = 2;
+    DataHash hash = 3;
+}
+
+message Announcement {
+    //UUID of the minion server
+    string UUID = 1;
+    repeated FileEntry entries = 2;
+    int64 availableSpace = 3;
+}
+
+message AnnounceResponse {}
+
+message Heartbeat {
+    string UUID = 1;
+    int64 availableSpace = 2;
+}
+
+message HeartBeatResponse {}
+

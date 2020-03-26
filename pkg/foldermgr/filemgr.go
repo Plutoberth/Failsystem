@@ -1,7 +1,7 @@
 package foldermgr
 
 import (
-	"github.com/pkg/errors"
+	"fmt"
 	"log"
 	"os"
 	"path"
@@ -18,7 +18,7 @@ type managedFile struct {
 func (m *managedFile) Write(p []byte) (n int, err error) {
 	newSize := m.bytesWritten + int64(len(p))
 	if newSize > m.entry.size {
-		return 0, errors.Errorf("Write exceeded allocation size: %v > %v", newSize, m.entry.size)
+		return 0, fmt.Errorf("Write exceeded allocation size: %v > %v", newSize, m.entry.size)
 	}
 	actualBytesWritten, err := m.file.Write(p)
 	m.bytesWritten += int64(actualBytesWritten) //Only update the actual number that was written
@@ -38,7 +38,7 @@ func (m *managedFile) Close() error {
 	if m.bytesWritten != m.entry.size {
 		//Contract states that changes are not saved for
 		_ = os.Remove(m.filePath)
-		return errors.Errorf("Size written != Size allocated: %v != %v", m.bytesWritten, m.entry.size)
+		return fmt.Errorf("Size written != Size allocated: %v != %v", m.bytesWritten, m.entry.size)
 	}
 
 	//Move file to storage folder (essentially its parent)

@@ -2,18 +2,17 @@ package main
 
 import (
 	"flag"
+	"github.com/plutoberth/Failsystem/core/minion"
 	"log"
-
-	"github.com/plutoberth/Failsystem/core"
 )
 
-var port = flag.Uint("port", 1337, "The MinionServer's port.")
+var port = flag.Uint("port", 31337, "The Server's port.")
 var quota = flag.Int64("quota", 13371337, "The data folder's quota.")
 var folderPath = flag.String("folder", "./dataFolder", "The data folder's path.")
 
 func main() {
 	flag.Parse()
-	server, err := core.NewMinionServer(*port, *folderPath, *quota)
+	server, err := minion.NewServer(*port, *folderPath, *quota, "127.0.0.1:1337")
 	if err != nil {
 		log.Fatalf("Failed while establishing server: %v", err)
 	}

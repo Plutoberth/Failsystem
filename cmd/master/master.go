@@ -3,39 +3,25 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
+	"github.com/plutoberth/Failsystem/core/master"
 	"log"
-	"net"
-
-	pb "github.com/plutoberth/Failsystem/model"
-	"google.golang.org/grpc"
 )
 
-var (
-	port = flag.Int("port", 1337, "The server's port.")
-)
-
-type server struct {
-	pb.UnimplementedMasterServer
-}
-
-func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadRequest) (*pb.FileUploadResponse, error) {
-	return &pb.FileUploadResponse{}, nil
-}
-
-func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (*pb.FileReadResponse, error) {
-	fmt.Println("Got message: ", in.GetUUID())
-	return &pb.FileReadResponse{}, nil
-}
+var port = flag.Uint("port", 1337, "The Server's port.")
 
 func main() {
 	flag.Parse()
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", *port))
+	mongoDal, err := master.NewMongoDatastore(context.Background(), "192.168.99.100:27017")
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		log.Fatalf("Failed to connect to MongoDB: %v", err)
+	}
+	server, err := master.NewServer(*port, mongoDal)
+	if err != nil {
+		log.Fatalf("Failed while establishing server: %v", err)
 	}
 
-	grpcServer := grpc.NewServer()
-	pb.RegisterMasterServer(grpcServer, &server{})
-	grpcServer.Serve(lis)
+	err = server.Serve()
+	if err != nil {
+		log.Fatalf("Failed afrer opening server: %v", err)
+	}
 }
