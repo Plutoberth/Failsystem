@@ -6,7 +6,7 @@ import (
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
 	"net"
-	"sync"
+	"time"
 )
 
 //Server interface defines methods that the caller may use to host the Master grpc service.
@@ -20,19 +20,26 @@ type server struct {
 	pb.UnimplementedMinionToMasterServer
 	address string
 	server  *grpc.Server
+	db      Datastore
+}
 
-	mtx *sync.RWMutex
+type dbServer struct {
+	UUID           string
+	AvailableSpace int64
+	LastIp         string
+	LastHeartbeat  time.Time
 }
 
 const maxPort uint = 2 << 16 // 65536
 
 //NewServer - Initializes a new master Server.
-func NewServer(port uint, quota int64) (Server, error) {
+func NewServer(port uint, quota int64, db Datastore) (Server, error) {
 	s := new(server)
 	if port >= maxPort {
 		return nil, fmt.Errorf("port must be between 0 and %v", maxPort)
 	}
 	s.address = fmt.Sprintf("0.0.0.0:%v", port)
+	s.db = db
 
 	return s, nil
 }
@@ -65,6 +72,5 @@ func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (
 }
 
 func (s *server) Announce(ctx context.Context, in *pb.Announcement, opts ...grpc.CallOption) (*pb.AnnounceResponse, error) {
-
 	panic("implement me")
 }
