@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/plutoberth/Failsystem/core/master"
 	"github.com/plutoberth/Failsystem/core/streams"
 	"github.com/plutoberth/Failsystem/pkg/foldermgr"
 	"io"
@@ -36,6 +37,7 @@ type server struct {
 	uuid    string
 	folder  foldermgr.ManagedFolder
 	server  *grpc.Server
+	masterAddress string
 
 	mtx *sync.RWMutex
 
@@ -45,14 +47,15 @@ type server struct {
 }
 
 const (
-	defaultChunkSize uint32 = 2 << 16
-	maxPort          uint   = 2 << 16 // 65536
-	delayTime               = time.Second * 10
-	uuidFile                = "uuid"
+	defaultChunkSize  uint32 = 2 << 16
+	maxPort           uint   = 2 << 16 // 65536
+	delayTime                = time.Second * 10
+	uuidFile                 = "uuid"
+	HeartbeatInterval        = time.Second * 4
 )
 
 //NewServer - Initializes a new minion server.
-func NewServer(port uint, folderPath string, quota int64) (Server, error) {
+func NewServer(port uint, folderPath string, quota int64, masterAddress string) (Server, error) {
 	s := new(server)
 	if port >= maxPort {
 		return nil, fmt.Errorf("port must be between 0 and %v", maxPort)
@@ -64,6 +67,7 @@ func NewServer(port uint, folderPath string, quota int64) (Server, error) {
 		return nil, err
 	}
 	s.folder = folder
+	s.masterAddress = masterAddress
 
 	s.empowerments = make(map[string][]string)
 	s.mtx = new(sync.RWMutex)
@@ -99,7 +103,10 @@ func (s *server) Serve() error {
 	s.server = grpc.NewServer()
 	pb.RegisterMinionServer(s.server, s)
 	pb.RegisterMasterToMinionServer(s.server, s)
+
+	go s.Heartbeat()
 	err = s.server.Serve(lis)
+
 	return err
 }
 
@@ -109,6 +116,25 @@ func (s *server) Close() {
 		s.server = nil
 	}
 }
+
+func (s *server) Heartbeat() {
+	for range time.Tick(HeartbeatInterval){
+		if s.server == nil {
+			break
+		}
+		mtmClient, err := master.NewMTMClient(s.masterAddress)
+		if err != nil {
+			log.Printf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
+			continue
+		}
+		if err = mtmClient.Heartbeat(s.uuid, s.folder.GetRemainingSpace()); err != nil {
+			log.Printf("CRITICAL: Failed to send a heartbeat to the master (%v): %v", s.masterAddress, err)
+		}
+		if err := mtmClient.Close(); err != nil {
+			log.Printf("CRITICAL: Failed to close connection to master (%v): %v", s.masterAddress, err)
+		}
+	}
+ }
 
 //Create the subordinate uploads
 func (s *server) createSubUploads(uuid string) (subWriters []io.WriteCloser, minionClients []Client, err error) {
