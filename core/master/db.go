@@ -13,7 +13,7 @@ type Datastore interface {
 	//LastUpdate shall be automatically updated.
 	UpdateServerEntry(ctx context.Context, entry ServerEntry) error
 	GetServerEntry(ctx context.Context, UUID string) (*ServerEntry, error)
-	UpdateFileEntry(ctx context.Context, entry FileEntry) error
+	UpdateFileEntry(ctx context.Context, FileUUID string, Size int64, ServerUUID string) error
 }
 
 type ServerEntry struct {
@@ -109,10 +109,17 @@ func (m *mongoDataStore) GetServerEntry(ctx context.Context, UUID string) (*Serv
 	return res, nil
 }
 
-func (m *mongoDataStore) UpdateFileEntry(ctx context.Context, entry FileEntry) error {
-	_, err := m.db.Collection(fileCollection).InsertOne(ctx, entry, options.InsertOne())
+func (m *mongoDataStore) UpdateFileEntry(ctx context.Context, FileUUID string, Size int64, ServerUUID string) error {
+	_, err := m.db.Collection(fileCollection).UpdateOne(ctx, bson.M{"_id": FileUUID},
+		bson.M{"$set": bson.M{"_id": FileUUID, "Size": Size}, "$addToSet": bson.M{"ServerUUIDs": ServerUUID}}, options.Update().SetUpsert(true))
 	if err != nil {
-		return fmt.Errorf("update file failed: %v", err)
+		//Intentionally not wrapping so callers wouldn't depend on error
+		return fmt.Errorf("update server failed: %v", err)
 	}
+
 	return nil
+}
+
+func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (FileEntry, error) {
+
 }
