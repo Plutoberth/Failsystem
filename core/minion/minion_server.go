@@ -133,7 +133,8 @@ func (s *server) AnnounceToMaster() error {
 		})
 	}
 
-	mtmClient, err := master.NewMTMClient(s.masterAddress)
+	ctx, _ := context.WithTimeout(context.Background(), HeartbeatInterval)
+	mtmClient, err := master.NewMTMClient(ctx, s.masterAddress)
 	if err != nil {
 		return fmt.Errorf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
 
@@ -159,7 +160,8 @@ func (s *server) Heartbeat() {
 		if s.server == nil {
 			break
 		}
-		mtmClient, err := master.NewMTMClient(s.masterAddress)
+		ctx, _ := context.WithTimeout(context.Background(), HeartbeatInterval)
+		mtmClient, err := master.NewMTMClient(ctx, s.masterAddress)
 		if err != nil {
 			log.Printf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
 			continue

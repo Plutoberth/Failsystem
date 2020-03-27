@@ -23,9 +23,9 @@ type mtmClient struct {
 const chunkSize = 4096
 
 //NewMTMClient - Returns a MTMClient struct initialized with the string.
-func NewMTMClient(address string) (MTMClient, error) {
+func NewMTMClient(ctx context.Context, address string) (MTMClient, error) {
 	c := new(mtmClient)
-	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.DialContext(ctx, address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		return c, err
 	}
