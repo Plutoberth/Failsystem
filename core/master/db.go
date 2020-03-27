@@ -13,20 +13,22 @@ type Datastore interface {
 	//LastUpdate shall be automatically updated.
 	UpdateServerEntry(ctx context.Context, entry ServerEntry) error
 	GetServerEntry(ctx context.Context, UUID string) (*ServerEntry, error)
-	UpdateFileEntry(ctx context.Context, FileUUID string, Size int64, ServerUUID string) error
+	CreateFileEntry(ctx context.Context, entry FileEntry) error
+	UpdateFileHosts(ctx context.Context, FileUUID string, ServerUUID string) error
 	GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error)
 }
 
 type ServerEntry struct {
-	UUID           string `bson:"_id"`
-	Ip             string `bson:"Ip"`
-	AvailableSpace int64 `bson:"AvailableSpace"`
+	UUID           string    `bson:"_id"`
+	Ip             string    `bson:"Ip"`
+	AvailableSpace int64     `bson:"AvailableSpace"`
 	LastUpdate     time.Time `bson:"LastUpdate"`
 }
 
 type FileEntry struct {
 	UUID        string `bson:"_id"`
-	Size        int64 `bson:"Size"`
+	Name        string `bson:"Name"`
+	Size        int64  `bson:"Size"`
 	ServerUUIDs []byte `bson:"ServerUUIDs"`
 }
 
@@ -51,8 +53,8 @@ type mongoDataStore struct {
 const (
 	serverCollection = "servers"
 	fileCollection   = "files"
-	expiryIndex = "expiryIndex"
-	serverTTL = 30
+	expiryIndex      = "expiryIndex"
+	serverTTL        = 30
 )
 
 func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
@@ -110,9 +112,9 @@ func (m *mongoDataStore) GetServerEntry(ctx context.Context, UUID string) (*Serv
 	return res, nil
 }
 
-func (m *mongoDataStore) UpdateFileEntry(ctx context.Context, FileUUID string, Size int64, ServerUUID string) error {
+func (m *mongoDataStore) UpdateFileHosts(ctx context.Context, FileUUID string, ServerUUID string) error {
 	_, err := m.db.Collection(fileCollection).UpdateOne(ctx, bson.M{"_id": FileUUID},
-		bson.M{"$set": bson.M{"_id": FileUUID, "Size": Size}, "$addToSet": bson.M{"ServerUUIDs": ServerUUID}}, options.Update().SetUpsert(true))
+		bson.M{"$addToSet": bson.M{"ServerUUIDs": ServerUUID}}, options.Update())
 	if err != nil {
 		//Intentionally not wrapping so callers wouldn't depend on error
 		return fmt.Errorf("update file failed: %v", err)
@@ -120,6 +122,18 @@ func (m *mongoDataStore) UpdateFileEntry(ctx context.Context, FileUUID string, S
 
 	return nil
 }
+
+func (m *mongoDataStore) CreateFileEntry(ctx context.Context, entry FileEntry) error {
+	_, err := m.db.Collection(fileCollection).InsertOne(ctx, bson.M{"$set": entry}, options.InsertOne())
+	if err != nil {
+		//Intentionally not wrapping so callers wouldn't depend on error
+		return fmt.Errorf("create file failed: %v", err)
+	}
+
+	return nil
+}
+
+
 
 func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error) {
 	var res = new(FileEntry)

@@ -88,10 +88,9 @@ func (s *server) updateServerDetails(ctx context.Context, UUID string, available
 }
 
 func (s *server) Announce(ctx context.Context, in *pb.Announcement) (*pb.AnnounceResponse, error) {
-	fmt.Printf("Announcement: %+v\n", in)
 	if in.GetEntries() != nil {
 		for _, file := range in.GetEntries() {
-			if err := s.db.UpdateFileEntry(ctx, file.GetUUID(), file.GetFileSize(), in.GetUUID()); err != nil {
+			if err := s.db.UpdateFileHosts(ctx, file.GetUUID(), in.GetUUID()); err != nil {
 				return nil, status.Errorf(codes.Internal, "Failed to update database")
 			}
 		}
