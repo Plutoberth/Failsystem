@@ -8,23 +8,21 @@ import (
 	"google.golang.org/grpc"
 )
 
-//MTMClient interface defines methods that the caller may use to use the MinionToMaster grpc service.
-type MTMClient interface {
+//InternalClient interface defines methods that the caller may use to use the MinionToMaster grpc service.
+type InternalClient interface {
 	Heartbeat(ctx context.Context, uuid string, availableSpace int64) error
 	Announce(ctx context.Context, announcement *pb.Announcement) error
 	Close() error
 }
 
-type mtmClient struct {
+type internalClient struct {
 	conn   *grpc.ClientConn
 	client pb.MinionToMasterClient
 }
 
-const chunkSize = 4096
-
-//NewMTMClient - Returns a MTMClient struct initialized with the string.
-func NewMTMClient(ctx context.Context, address string) (MTMClient, error) {
-	c := new(mtmClient)
+//NewInternalClient - Returns a InternalClient struct initialized with the string.
+func NewInternalClient(ctx context.Context, address string) (InternalClient, error) {
+	c := new(internalClient)
 	conn, err := grpc.DialContext(ctx, address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		return c, err
@@ -34,7 +32,7 @@ func NewMTMClient(ctx context.Context, address string) (MTMClient, error) {
 	return c, nil
 }
 
-func (c *mtmClient) Close() (err error) {
+func (c *internalClient) Close() (err error) {
 	if c.conn != nil {
 		err = c.conn.Close()
 		c.conn = nil //prevent double calls
@@ -44,7 +42,7 @@ func (c *mtmClient) Close() (err error) {
 	return err
 }
 
-func (c *mtmClient) Heartbeat(ctx context.Context, uuid string, availableSpace int64) error {
+func (c *internalClient) Heartbeat(ctx context.Context, uuid string, availableSpace int64) error {
 	_, err := c.client.Beat(ctx, &pb.Heartbeat{UUID: uuid, AvailableSpace: availableSpace})
 	if err != nil {
 		return fmt.Errorf("heartbeat failed: %w", err)
@@ -52,7 +50,7 @@ func (c *mtmClient) Heartbeat(ctx context.Context, uuid string, availableSpace i
 	return nil
 }
 
-func (c *mtmClient) Announce(ctx context.Context, announcement *pb.Announcement) error {
+func (c *internalClient) Announce(ctx context.Context, announcement *pb.Announcement) error {
 	if _, err := c.client.Announce(ctx, announcement); err != nil {
 		return fmt.Errorf("announcement failed: %w", err)
 	}

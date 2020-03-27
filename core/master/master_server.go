@@ -26,7 +26,10 @@ type server struct {
 	db      Datastore
 }
 
-const maxPort uint = 2 << 16 // 65536
+const (
+	maxPort           uint = 2 << 16 // 65536
+	replicationFactor uint = 3
+)
 
 //NewServer - Initializes a new master Server.
 func NewServer(port uint, db Datastore) (Server, error) {
@@ -62,7 +65,8 @@ func (s *server) Close() {
 }
 
 func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadRequest) (*pb.FileUploadResponse, error) {
-	panic("implement me")
+
+	return &pb.FileUploadResponse{}, nil
 }
 
 func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (*pb.FileReadResponse, error) {
@@ -95,7 +99,6 @@ func (s *server) Announce(ctx context.Context, in *pb.Announcement) (*pb.Announc
 			}
 		}
 	}
-
 	return &pb.AnnounceResponse{}, s.updateServerDetails(ctx, in.GetUUID(), in.GetAvailableSpace())
 }
 
