@@ -10,7 +10,7 @@ import (
 
 //MTMClient interface defines methods that the caller may use to use the MinionToMaster grpc service.
 type MTMClient interface {
-	Heartbeat(uuid string, availableSpace int64) error
+	Heartbeat(ctx context.Context, uuid string, availableSpace int64) error
 	Announce(ctx context.Context, announcement *pb.Announcement) error
 	Close() error
 }

@@ -117,7 +117,42 @@ func (s *server) Close() {
 	}
 }
 
+func (s *server) AnnounceToMaster() error {
+	var announcement pb.Announcement
+	announcement.UUID = s.uuid
+	announcement.AvailableSpace = s.folder.GetRemainingSpace()
+	resp, err := s.folder.ListFiles()
+	if err != nil {
+		return fmt.Errorf("CRITICAL: Failed to list files in folder: %v", err)
+	}
+	announcement.Entries = make([]*pb.FileEntry, 0, len(resp))
+	for _, entry := range resp {
+		announcement.Entries = append(announcement.Entries, &pb.FileEntry{
+			UUID:                 entry.Name(),
+			FileSize:             entry.Size(),
+		})
+	}
+
+	mtmClient, err := master.NewMTMClient(s.masterAddress)
+	if err != nil {
+		return fmt.Errorf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
+
+	}
+	defer func() { 	if err := mtmClient.Close(); err != nil {
+		log.Printf("CRITICAL: Failed to close connection to master (%v): %v", s.masterAddress, err)
+	} }()
+
+	if err := mtmClient.Announce(context.Background(), &announcement); err != nil {
+		return fmt.Errorf("CRITICAL: Failed to send an announcement to the master (%v): %v", s.masterAddress, err)
+	}
+	return nil
+}
+
 func (s *server) Heartbeat() {
+	//Announce first
+	if err := s.AnnounceToMaster(); err != nil {
+		log.Printf("%v", err)
+	}
 	for range time.Tick(HeartbeatInterval){
 		if s.server == nil {
 			break
@@ -127,7 +162,7 @@ func (s *server) Heartbeat() {
 			log.Printf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
 			continue
 		}
-		if err = mtmClient.Heartbeat(s.uuid, s.folder.GetRemainingSpace()); err != nil {
+		if err = mtmClient.Heartbeat(context.Background(), s.uuid, s.folder.GetRemainingSpace()); err != nil {
 			log.Printf("CRITICAL: Failed to send a heartbeat to the master (%v): %v", s.masterAddress, err)
 		}
 		if err := mtmClient.Close(); err != nil {
