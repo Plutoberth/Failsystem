@@ -33,10 +33,10 @@ type Server interface {
 type server struct {
 	pb.UnimplementedMinionServer
 	pb.UnimplementedMasterToMinionServer
-	address string
-	uuid    string
-	folder  foldermgr.ManagedFolder
-	server  *grpc.Server
+	address       string
+	uuid          string
+	folder        foldermgr.ManagedFolder
+	server        *grpc.Server
 	masterAddress string
 
 	mtx *sync.RWMutex
@@ -128,8 +128,8 @@ func (s *server) AnnounceToMaster() error {
 	announcement.Entries = make([]*pb.FileEntry, 0, len(resp))
 	for _, entry := range resp {
 		announcement.Entries = append(announcement.Entries, &pb.FileEntry{
-			UUID:                 entry.Name(),
-			FileSize:             entry.Size(),
+			UUID:     entry.Name(),
+			FileSize: entry.Size(),
 		})
 	}
 
@@ -138,9 +138,11 @@ func (s *server) AnnounceToMaster() error {
 		return fmt.Errorf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
 
 	}
-	defer func() { 	if err := mtmClient.Close(); err != nil {
-		log.Printf("CRITICAL: Failed to close connection to master (%v): %v", s.masterAddress, err)
-	} }()
+	defer func() {
+		if err := mtmClient.Close(); err != nil {
+			log.Printf("CRITICAL: Failed to close connection to master (%v): %v", s.masterAddress, err)
+		}
+	}()
 
 	if err := mtmClient.Announce(context.Background(), &announcement); err != nil {
 		return fmt.Errorf("CRITICAL: Failed to send an announcement to the master (%v): %v", s.masterAddress, err)
@@ -153,7 +155,7 @@ func (s *server) Heartbeat() {
 	if err := s.AnnounceToMaster(); err != nil {
 		log.Printf("%v", err)
 	}
-	for range time.Tick(HeartbeatInterval){
+	for range time.Tick(HeartbeatInterval) {
 		if s.server == nil {
 			break
 		}
@@ -169,7 +171,7 @@ func (s *server) Heartbeat() {
 			log.Printf("CRITICAL: Failed to close connection to master (%v): %v", s.masterAddress, err)
 		}
 	}
- }
+}
 
 //Create the subordinate uploads
 func (s *server) createSubUploads(uuid string) (subWriters []io.WriteCloser, minionClients []Client, err error) {

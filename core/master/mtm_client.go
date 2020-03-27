@@ -20,7 +20,6 @@ type mtmClient struct {
 	client pb.MinionToMasterClient
 }
 
-
 const chunkSize = 4096
 
 //NewMTMClient - Returns a MTMClient struct initialized with the string.
@@ -53,10 +52,9 @@ func (c *mtmClient) Heartbeat(ctx context.Context, uuid string, availableSpace i
 	return nil
 }
 
-func (c *mtmClient) Announce(ctx context.Context, announcement *pb.Announcement) error{
+func (c *mtmClient) Announce(ctx context.Context, announcement *pb.Announcement) error {
 	if _, err := c.client.Announce(ctx, announcement); err != nil {
 		return fmt.Errorf("announcement failed: %w", err)
 	}
 	return nil
 }
-

@@ -133,8 +133,6 @@ func (m *mongoDataStore) CreateFileEntry(ctx context.Context, entry FileEntry) e
 	return nil
 }
 
-
-
 func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error) {
 	var res = new(FileEntry)
 	findResult := m.db.Collection(fileCollection).FindOne(ctx, bson.M{"_id": UUID}, options.FindOne())

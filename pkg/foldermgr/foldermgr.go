@@ -314,7 +314,7 @@ func (m *managedFolder) ListFiles() ([]os.FileInfo, error) {
 		return nil, err
 	}
 	for _, entry := range entries {
-		if !entry.IsDir()  && entry.Name() != managedFolderSentinel {
+		if !entry.IsDir() && entry.Name() != managedFolderSentinel {
 			files = append(files, entry)
 		}
 	}
