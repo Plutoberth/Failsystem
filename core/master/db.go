@@ -14,6 +14,7 @@ type Datastore interface {
 	UpdateServerEntry(ctx context.Context, entry ServerEntry) error
 	GetServerEntry(ctx context.Context, UUID string) (*ServerEntry, error)
 	UpdateFileEntry(ctx context.Context, FileUUID string, Size int64, ServerUUID string) error
+	GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error)
 }
 
 type ServerEntry struct {
@@ -101,10 +102,10 @@ func (m *mongoDataStore) GetServerEntry(ctx context.Context, UUID string) (*Serv
 	var res = new(ServerEntry)
 	findResult := m.db.Collection(serverCollection).FindOne(ctx, bson.M{"_id": UUID}, options.FindOne())
 	if findResult.Err() != nil {
-		return nil, fmt.Errorf("find failed: %v", findResult.Err())
+		return nil, fmt.Errorf("find server failed: %v", findResult.Err())
 	}
 	if err := findResult.Decode(&res); err != nil {
-		return nil, fmt.Errorf("find failed: %v", err)
+		return nil, fmt.Errorf("find server failed: %v", err)
 	}
 	return res, nil
 }
@@ -114,12 +115,20 @@ func (m *mongoDataStore) UpdateFileEntry(ctx context.Context, FileUUID string, S
 		bson.M{"$set": bson.M{"_id": FileUUID, "Size": Size}, "$addToSet": bson.M{"ServerUUIDs": ServerUUID}}, options.Update().SetUpsert(true))
 	if err != nil {
 		//Intentionally not wrapping so callers wouldn't depend on error
-		return fmt.Errorf("update server failed: %v", err)
+		return fmt.Errorf("update file failed: %v", err)
 	}
 
 	return nil
 }
 
-func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (FileEntry, error) {
-
+func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error) {
+	var res = new(FileEntry)
+	findResult := m.db.Collection(fileCollection).FindOne(ctx, bson.M{"_id": UUID}, options.FindOne())
+	if findResult.Err() != nil {
+		return nil, fmt.Errorf("find file failed: %v", findResult.Err())
+	}
+	if err := findResult.Decode(&res); err != nil {
+		return nil, fmt.Errorf("find file failed: %v", err)
+	}
+	return res, nil
 }
