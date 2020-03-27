@@ -51,7 +51,6 @@ const (
 	serverCollection = "servers"
 	fileCollection   = "files"
 	expiryIndex = "expiryIndex"
-
 	serverTTL = 30
 )
 

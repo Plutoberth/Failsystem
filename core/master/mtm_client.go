@@ -11,6 +11,7 @@ import (
 //MTMClient interface defines methods that the caller may use to use the MinionToMaster grpc service.
 type MTMClient interface {
 	Heartbeat(uuid string, availableSpace int64) error
+	Announce(ctx context.Context, announcement *pb.Announcement) error
 	Close() error
 }
 
@@ -44,10 +45,17 @@ func (c *mtmClient) Close() (err error) {
 	return err
 }
 
-func (c *mtmClient) Heartbeat(uuid string, availableSpace int64) error {
-	_, err := c.client.Beat(context.Background(), &pb.Heartbeat{UUID: uuid, AvailableSpace: availableSpace})
+func (c *mtmClient) Heartbeat(ctx context.Context, uuid string, availableSpace int64) error {
+	_, err := c.client.Beat(ctx, &pb.Heartbeat{UUID: uuid, AvailableSpace: availableSpace})
 	if err != nil {
 		return fmt.Errorf("heartbeat failed: %w", err)
+	}
+	return nil
+}
+
+func (c *mtmClient) Announce(ctx context.Context, announcement *pb.Announcement) error{
+	if _, err := c.client.Announce(ctx, announcement); err != nil {
+		return fmt.Errorf("announcement failed: %w", err)
 	}
 	return nil
 }
