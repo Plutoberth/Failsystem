@@ -201,10 +201,10 @@ func (s *server) finalizeSubUploads(subWriters []io.WriteCloser, clients []Clien
 	for _, subWriter := range subWriters {
 		if err := subWriter.Close(); err != nil {
 			if errors.Is(err, HashError) {
-				return status.Errorf(codes.Internal, "Data corrupted among servers")
+				return status.Errorf(codes.DataLoss, "Data corrupted among servers")
 			} else {
 				log.Printf("finalizeSubUploads: Failed when closing Minion upload - %v", err)
-				return status.Errorf(codes.Internal, "Failed when finalizing replication")
+				return status.Errorf(codes.DataLoss, "Failed when finalizing replication")
 			}
 		}
 	}
@@ -232,7 +232,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	} else {
 		switch data := req.GetData().(type) {
 		case *pb.UploadRequest_Chunk:
-			return status.Errorf(codes.InvalidArgument, "First Upload Request must be a UUID")
+			return status.Errorf(codes.InvalidArgument, "First upload request must be a UUID")
 
 		case *pb.UploadRequest_UUID:
 			//TODO: Using this technique is inefficient CPU-wise. The hash is performed n times.
@@ -285,7 +285,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 			}
 		default:
 			log.Printf("Error when type switching on Server UploadFile, swithced on unexpected type. Value: %v", req.GetData())
-			return status.Errorf(codes.Internal, "Unrecognized request data type")
+			return status.Errorf(codes.InvalidArgument, "Unrecognized request data type")
 		}
 	}
 
@@ -354,7 +354,7 @@ func (s *server) Empower(ctx context.Context, in *pb.EmpowermentRequest) (*pb.Em
 	}
 
 	if !s.folder.CheckIfAllocated(in.GetUUID()) {
-		return nil, status.Errorf(codes.InvalidArgument, "The UUID doesn't have an allocation on the server")
+		return nil, status.Errorf(codes.FailedPrecondition, "The UUID doesn't have an allocation on the server")
 	}
 
 	subs := in.GetSubordinates()
