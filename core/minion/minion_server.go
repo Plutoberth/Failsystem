@@ -33,10 +33,10 @@ type Server interface {
 type server struct {
 	pb.UnimplementedMinionServer
 	pb.UnimplementedMasterToMinionServer
-	address string
-	uuid    string
-	folder  foldermgr.ManagedFolder
-	server  *grpc.Server
+	address       string
+	uuid          string
+	folder        foldermgr.ManagedFolder
+	server        *grpc.Server
 	masterAddress string
 
 	mtx *sync.RWMutex
@@ -117,8 +117,45 @@ func (s *server) Close() {
 	}
 }
 
+func (s *server) AnnounceToMaster() error {
+	var announcement pb.Announcement
+	announcement.UUID = s.uuid
+	announcement.AvailableSpace = s.folder.GetRemainingSpace()
+	resp, err := s.folder.ListFiles()
+	if err != nil {
+		return fmt.Errorf("CRITICAL: Failed to list files in folder: %v", err)
+	}
+	announcement.Entries = make([]*pb.FileEntry, 0, len(resp))
+	for _, entry := range resp {
+		announcement.Entries = append(announcement.Entries, &pb.FileEntry{
+			UUID:     entry.Name(),
+			FileSize: entry.Size(),
+		})
+	}
+
+	mtmClient, err := master.NewMTMClient(s.masterAddress)
+	if err != nil {
+		return fmt.Errorf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
+
+	}
+	defer func() {
+		if err := mtmClient.Close(); err != nil {
+			log.Printf("CRITICAL: Failed to close connection to master (%v): %v", s.masterAddress, err)
+		}
+	}()
+
+	if err := mtmClient.Announce(context.Background(), &announcement); err != nil {
+		return fmt.Errorf("CRITICAL: Failed to send an announcement to the master (%v): %v", s.masterAddress, err)
+	}
+	return nil
+}
+
 func (s *server) Heartbeat() {
-	for range time.Tick(HeartbeatInterval){
+	//Announce first
+	if err := s.AnnounceToMaster(); err != nil {
+		log.Printf("%v", err)
+	}
+	for range time.Tick(HeartbeatInterval) {
 		if s.server == nil {
 			break
 		}
@@ -127,14 +164,14 @@ func (s *server) Heartbeat() {
 			log.Printf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
 			continue
 		}
-		if err = mtmClient.Heartbeat(s.uuid, s.folder.GetRemainingSpace()); err != nil {
+		if err = mtmClient.Heartbeat(context.Background(), s.uuid, s.folder.GetRemainingSpace()); err != nil {
 			log.Printf("CRITICAL: Failed to send a heartbeat to the master (%v): %v", s.masterAddress, err)
 		}
 		if err := mtmClient.Close(); err != nil {
 			log.Printf("CRITICAL: Failed to close connection to master (%v): %v", s.masterAddress, err)
 		}
 	}
- }
+}
 
 //Create the subordinate uploads
 func (s *server) createSubUploads(uuid string) (subWriters []io.WriteCloser, minionClients []Client, err error) {
@@ -166,10 +203,10 @@ func (s *server) finalizeSubUploads(subWriters []io.WriteCloser, clients []Clien
 	for _, subWriter := range subWriters {
 		if err := subWriter.Close(); err != nil {
 			if errors.Is(err, HashError) {
-				return status.Errorf(codes.Internal, "Data corrupted among servers")
+				return status.Errorf(codes.DataLoss, "Data corrupted among servers")
 			} else {
 				log.Printf("finalizeSubUploads: Failed when closing Minion upload - %v", err)
-				return status.Errorf(codes.Internal, "Failed when finalizing replication")
+				return status.Errorf(codes.DataLoss, "Failed when finalizing replication")
 			}
 		}
 	}
@@ -197,7 +234,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	} else {
 		switch data := req.GetData().(type) {
 		case *pb.UploadRequest_Chunk:
-			return status.Errorf(codes.InvalidArgument, "First Upload Request must be a UUID")
+			return status.Errorf(codes.InvalidArgument, "First upload request must be a UUID")
 
 		case *pb.UploadRequest_UUID:
 			//TODO: Using this technique is inefficient CPU-wise. The hash is performed n times.
@@ -250,7 +287,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 			}
 		default:
 			log.Printf("Error when type switching on Server UploadFile, swithced on unexpected type. Value: %v", req.GetData())
-			return status.Errorf(codes.Internal, "Unrecognized request data type")
+			return status.Errorf(codes.InvalidArgument, "Unrecognized request data type")
 		}
 	}
 
@@ -319,7 +356,7 @@ func (s *server) Empower(ctx context.Context, in *pb.EmpowermentRequest) (*pb.Em
 	}
 
 	if !s.folder.CheckIfAllocated(in.GetUUID()) {
-		return nil, status.Errorf(codes.InvalidArgument, "The UUID doesn't have an allocation on the server")
+		return nil, status.Errorf(codes.FailedPrecondition, "The UUID doesn't have an allocation on the server")
 	}
 
 	subs := in.GetSubordinates()

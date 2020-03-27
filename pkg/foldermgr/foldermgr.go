@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -56,6 +57,12 @@ type ManagedFolder interface {
 
 	//Check if the UUID has an allocation.
 	CheckIfAllocated(UUID string) bool
+
+	//List files in the directory.
+	ListFiles() ([]os.FileInfo, error)
+
+	//Get the path of the managed folder.
+	GetPath() string
 
 	//TODO: Add DeleteFile
 }
@@ -297,4 +304,24 @@ func (m *managedFolder) waitForCancellation(ctx context.Context, entry allocatio
 		//If they started writing, freeing the allocation is no longer possible so we don't need to listen
 		return
 	}
+}
+
+func (m *managedFolder) ListFiles() ([]os.FileInfo, error) {
+	var files []os.FileInfo
+	entries, err := ioutil.ReadDir(m.folderPath)
+	files = make([]os.FileInfo, 0, len(entries))
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && entry.Name() != managedFolderSentinel {
+			files = append(files, entry)
+		}
+	}
+
+	return files, nil
+}
+
+func (m *managedFolder) GetPath() string {
+	return m.folderPath
 }

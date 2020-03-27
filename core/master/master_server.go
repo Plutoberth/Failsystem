@@ -49,6 +49,7 @@ func (s *server) Serve() error {
 	s.server = grpc.NewServer()
 	pb.RegisterMasterServer(s.server, s)
 	pb.RegisterMinionToMasterServer(s.server, s)
+	fmt.Println("Master is running at: ", s.address)
 	err = s.server.Serve(lis)
 	return err
 }
@@ -68,25 +69,36 @@ func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (
 	panic("implement me")
 }
 
-func (s *server) Announce(ctx context.Context, in *pb.Announcement) (*pb.AnnounceResponse, error) {
-	panic("implement me")
-}
-
-func (s *server) Beat(ctx context.Context, in *pb.Heartbeat) (*pb.HeartBeatResponse, error) {
+func (s *server) updateServerDetails(ctx context.Context, UUID string, availableSpace int64) error {
 	caller, ok := peer.FromContext(ctx)
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "Couldn't fetch IP address for peer")
+		return status.Errorf(codes.Internal, "Couldn't fetch IP address for peer")
 	}
 
 	err := s.db.UpdateServerEntry(ctx, ServerEntry{
-		UUID:           in.GetUUID(),
+		UUID:           UUID,
 		Ip:             caller.Addr.(*net.TCPAddr).IP.String(),
-		AvailableSpace: in.GetAvailableSpace(),
+		AvailableSpace: availableSpace,
 	})
 	if err != nil {
 		log.Printf("Failed when writing heartbeat to db: %v", err)
-		return nil, status.Errorf(codes.Internal, "Failed to update database")
+		return status.Errorf(codes.Internal, "Failed to update database")
+	}
+	return nil
+}
+
+func (s *server) Announce(ctx context.Context, in *pb.Announcement) (*pb.AnnounceResponse, error) {
+	if in.GetEntries() != nil {
+		for _, file := range in.GetEntries() {
+			if err := s.db.UpdateFileHosts(ctx, file.GetUUID(), in.GetUUID()); err != nil {
+				return nil, status.Errorf(codes.Internal, "Failed to update database")
+			}
+		}
 	}
 
-	return &pb.HeartBeatResponse{}, nil
+	return &pb.AnnounceResponse{}, s.updateServerDetails(ctx, in.GetUUID(), in.GetAvailableSpace())
+}
+
+func (s *server) Beat(ctx context.Context, in *pb.Heartbeat) (*pb.HeartBeatResponse, error) {
+	return &pb.HeartBeatResponse{}, s.updateServerDetails(ctx, in.GetUUID(), in.GetAvailableSpace())
 }
