@@ -7,7 +7,7 @@ import (
 )
 
 var port = flag.Uint("port", 31337, "The Server's port.")
-var quota = flag.Int64("quota", 13371337, "The data folder's quota.")
+var quota = flag.Int64("quota", 10000, "The data folder's quota.")
 var folderPath = flag.String("folder", "./dataFolder", "The data folder's path.")
 
 func main() {
