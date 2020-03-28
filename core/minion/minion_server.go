@@ -104,7 +104,7 @@ func (s *server) Serve() error {
 	pb.RegisterMinionServer(s.server, s)
 	pb.RegisterMasterToMinionServer(s.server, s)
 
-	go s.Heartbeat()
+	go s.heartbeatLoop()
 	err = s.server.Serve(lis)
 
 	return err
@@ -117,7 +117,7 @@ func (s *server) Close() {
 	}
 }
 
-func (s *server) AnnounceToMaster() error {
+func (s *server) announceToMaster() error {
 	var announcement pb.Announcement
 	announcement.UUID = s.uuid
 	announcement.AvailableSpace = s.folder.GetRemainingSpace()
@@ -151,9 +151,9 @@ func (s *server) AnnounceToMaster() error {
 	return nil
 }
 
-func (s *server) Heartbeat() {
+func (s *server) heartbeatLoop() {
 	//Announce first
-	if err := s.AnnounceToMaster(); err != nil {
+	if err := s.announceToMaster(); err != nil {
 		log.Printf("%v", err)
 	}
 	for range time.Tick(HeartbeatInterval) {
@@ -241,17 +241,19 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 		case *pb.UploadRequest_UUID:
 			//TODO: Using this technique is inefficient CPU-wise. The hash is performed n times.
 			//In practice, 99% of the time is in network IO, so it doesn't really matter.
-			subWriters, minionClients, err = s.createSubUploads(data.UUID)
+			filename = data.UUID
+
+			if _, err := uuid.Parse(filename); err != nil {
+				return status.Errorf(codes.InvalidArgument, "Invalid UUID")
+			}
+
+			subWriters, minionClients, err = s.createSubUploads(filename)
 			if err != nil {
 				return err
 			}
-			filename = data.UUID
 		}
 	}
 
-	if _, err := uuid.Parse(filename); err != nil {
-		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
-	}
 
 	if file, err = s.folder.WriteToFile(filename); err != nil {
 		log.Printf("Failed to open file, %v", err)
