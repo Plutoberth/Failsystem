@@ -244,7 +244,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 			filename = data.UUID
 
 			if _, err := uuid.Parse(filename); err != nil {
-				return status.Errorf(codes.InvalidArgument, "Invalid UUID")
+				return status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 			}
 
 			subWriters, minionClients, err = s.createSubUploads(filename)
@@ -320,11 +320,11 @@ func (s *server) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Download
 	)
 
 	if _, err := uuid.Parse(req.GetUUID()); err != nil {
-		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
+		return status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 	}
 
 	if file, err = s.folder.ReadFile(req.GetUUID()); err != nil {
-		return status.Errorf(codes.NotFound, "UUID not present")
+		return status.Errorf(codes.NotFound, "File not present")
 	}
 
 	chunkWriter := streams.NewFileChunkSenderWrapper(stream)
@@ -356,7 +356,7 @@ func (s *server) Empower(ctx context.Context, in *pb.EmpowermentRequest) (*pb.Em
 	_, _ = ctx, in
 
 	if _, err := uuid.Parse(in.GetUUID()); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "Invalid UUID")
+		return nil, status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 	}
 
 	if !s.folder.CheckIfAllocated(in.GetUUID()) {
