@@ -1,4 +1,4 @@
-package minion
+package internal_minion
 
 import (
 	"context"
@@ -8,21 +8,21 @@ import (
 	"google.golang.org/grpc"
 )
 
-//InternalClient interface defines methods that the caller may use to use the MasterToMinion grpc service.
-type InternalClient interface {
+//Client interface defines methods that the caller may use to use the MasterToMinion grpc service.
+type Client interface {
 	Allocate(ctx context.Context, req *pb.AllocationRequest) (*pb.AllocationResponse, error)
 	Empower(ctx context.Context, req *pb.EmpowermentRequest) (*pb.EmpowermentResponse, error)
 	Close() error
 }
 
-type internalClient struct {
+type client struct {
 	conn   *grpc.ClientConn
 	client pb.MasterToMinionClient
 }
 
-//NewInternalClient - Returns a InternalClient struct initialized with the string.
-func NewInternalClient(ctx context.Context, address string) (InternalClient, error) {
-	c := new(internalClient)
+//NewClient - Returns a Client struct initialized with the string.
+func NewClient(ctx context.Context, address string) (Client, error) {
+	c := new(client)
 	conn, err := grpc.DialContext(ctx, address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		return c, err
@@ -32,7 +32,7 @@ func NewInternalClient(ctx context.Context, address string) (InternalClient, err
 	return c, nil
 }
 
-func (c *internalClient) Close() (err error) {
+func (c *client) Close() (err error) {
 	if c.conn != nil {
 		err = c.conn.Close()
 		c.conn = nil //prevent double calls
@@ -42,7 +42,7 @@ func (c *internalClient) Close() (err error) {
 	return err
 }
 
-func (c *internalClient) Allocate(ctx context.Context, req *pb.AllocationRequest) (*pb.AllocationResponse, error) {
+func (c *client) Allocate(ctx context.Context, req *pb.AllocationRequest) (*pb.AllocationResponse, error) {
 	resp, err := c.client.Allocate(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("allocation failed: %w", err)
@@ -50,7 +50,7 @@ func (c *internalClient) Allocate(ctx context.Context, req *pb.AllocationRequest
 	return resp, nil
 }
 
-func (c *internalClient) Empower(ctx context.Context, req *pb.EmpowermentRequest) (*pb.EmpowermentResponse, error) {
+func (c *client) Empower(ctx context.Context, req *pb.EmpowermentRequest) (*pb.EmpowermentResponse, error) {
 	resp, err := c.client.Empower(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("empowerment failed: %w", err)

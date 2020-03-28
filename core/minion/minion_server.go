@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/plutoberth/Failsystem/core/master"
+	"github.com/plutoberth/Failsystem/core/master/internal_master"
 	"github.com/plutoberth/Failsystem/core/streams"
 	"github.com/plutoberth/Failsystem/pkg/foldermgr"
 	"io"
@@ -134,7 +134,7 @@ func (s *server) announceToMaster() error {
 	}
 
 	ctx, _ := context.WithTimeout(context.Background(), HeartbeatInterval)
-	mtmClient, err := master.NewInternalClient(ctx, s.masterAddress)
+	mtmClient, err := internal_master.NewClient(ctx, s.masterAddress)
 	if err != nil {
 		return fmt.Errorf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
 
@@ -161,7 +161,7 @@ func (s *server) heartbeatLoop() {
 			break
 		}
 		ctx, _ := context.WithTimeout(context.Background(), HeartbeatInterval)
-		mtmClient, err := master.NewInternalClient(ctx, s.masterAddress)
+		mtmClient, err := internal_master.NewClient(ctx, s.masterAddress)
 		if err != nil {
 			log.Printf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
 			continue
@@ -253,7 +253,6 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 			}
 		}
 	}
-
 
 	if file, err = s.folder.WriteToFile(filename); err != nil {
 		log.Printf("Failed to open file, %v", err)
