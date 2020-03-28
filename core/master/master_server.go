@@ -105,3 +105,7 @@ func (s *server) Announce(ctx context.Context, in *pb.Announcement) (*pb.Announc
 func (s *server) Beat(ctx context.Context, in *pb.Heartbeat) (*pb.HeartBeatResponse, error) {
 	return &pb.HeartBeatResponse{}, s.updateServerDetails(ctx, in.GetUUID(), in.GetAvailableSpace())
 }
+
+func (s *server) FinalizeUpload(ctx context.Context, in *pb.FinalizeUploadMessage) (*pb.FinalizeUploadResponse, error) {
+	panic("not implemented")
+}

@@ -57,4 +57,3 @@ func (c *internalClient) Empower(ctx context.Context, req *pb.EmpowermentRequest
 	}
 	return resp, nil
 }
-
