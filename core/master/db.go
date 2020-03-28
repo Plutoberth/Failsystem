@@ -17,7 +17,7 @@ type Datastore interface {
 	CreateFileEntry(ctx context.Context, entry FileEntry) error
 	UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error
 	GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error)
-	GetServersWithEnoughSpace(ctx context.Context, requestedSize uint64) ([]ServerEntry, error)
+	GetServersWithEnoughSpace(ctx context.Context, requestedSize int64) ([]ServerEntry, error)
 }
 
 type ServerEntry struct {
@@ -162,7 +162,7 @@ func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEn
 	return res, nil
 }
 
-func (m *mongoDataStore) GetServersWithEnoughSpace(ctx context.Context, requestedSize uint64) ([]ServerEntry, error) {
+func (m *mongoDataStore) GetServersWithEnoughSpace(ctx context.Context, requestedSize int64) ([]ServerEntry, error) {
 	var results = make([]ServerEntry, 0, replicationFactor*2)
 	cursor, err := m.db.Collection(serverCollection).Find(ctx, bson.M{"AvailableSpace": bson.M{"$gt": requestedSize}}, options.Find())
 	if err != nil {

@@ -3,6 +3,7 @@ package master
 import (
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -65,7 +66,20 @@ func (s *server) Close() {
 }
 
 func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadRequest) (*pb.FileUploadResponse, error) {
+	if in.GetFileSize() <= 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "File size must be greater than zero")
+	}
+	fileUUID := in.GetFileName()
+	if _, err := uuid.Parse(fileUUID); err != nil {
+		return nil, fmt.Errorf("\"%v\" is not a valid UUID", fileUUID)
+	}
+	servers, err := s.db.GetServersWithEnoughSpace(ctx, in.FileSize)
 
+	if err != nil {
+		log.Printf("Error when fetching servers with enough space: %v", err)
+		return nil, status.Errorf(codes.Internal, "Database fetch failed")
+	}
+	fmt.Printf("%+v\n", servers)
 	return &pb.FileUploadResponse{}, nil
 }
 
