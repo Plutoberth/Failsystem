@@ -173,7 +173,7 @@ func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (
 	panic("implement me")
 }
 
-func (s *server) updateServerDetails(ctx context.Context, UUID string, availableSpace int64) error {
+func (s *server) updateServerDetails(ctx context.Context, UUID string, availableSpace int64, port int32) error {
 	caller, ok := peer.FromContext(ctx)
 	if !ok {
 		return status.Errorf(codes.Internal, "Couldn't fetch IP address for peer")
@@ -181,7 +181,7 @@ func (s *server) updateServerDetails(ctx context.Context, UUID string, available
 
 	err := s.db.UpdateServerEntry(ctx, ServerEntry{
 		UUID:           UUID,
-		Ip:             caller.Addr.(*net.TCPAddr).IP.String(),
+		Ip:             fmt.Sprintf("%s:%d", caller.Addr.(*net.TCPAddr).IP.String(), port),
 		AvailableSpace: availableSpace,
 	})
 	if err != nil {
@@ -199,11 +199,11 @@ func (s *server) Announce(ctx context.Context, in *pb.Announcement) (*pb.Announc
 			}
 		}
 	}
-	return &pb.AnnounceResponse{}, s.updateServerDetails(ctx, in.GetUUID(), in.GetAvailableSpace())
+	return &pb.AnnounceResponse{}, s.updateServerDetails(ctx, in.GetUUID(), in.GetAvailableSpace(), in.GetPort())
 }
 
 func (s *server) Beat(ctx context.Context, in *pb.Heartbeat) (*pb.HeartBeatResponse, error) {
-	return &pb.HeartBeatResponse{}, s.updateServerDetails(ctx, in.GetUUID(), in.GetAvailableSpace())
+	return &pb.HeartBeatResponse{}, s.updateServerDetails(ctx, in.GetUUID(), in.GetAvailableSpace(), in.GetPort())
 }
 
 func (s *server) FinalizeUpload(ctx context.Context, in *pb.FinalizeUploadMessage) (*pb.FinalizeUploadResponse, error) {

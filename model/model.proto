@@ -115,6 +115,7 @@ message Announcement {
     string UUID = 1;
     repeated FileEntry entries = 2;
     int64 availableSpace = 3;
+    int32 port = 4;
 }
 
 message AnnounceResponse {}
@@ -123,6 +124,7 @@ message Heartbeat {
     //UUID of the minion server
     string UUID = 1;
     int64 availableSpace = 2;
+    int32 port = 3;
 }
 
 message HeartBeatResponse {}
