@@ -1,2 +1,2 @@
 # Failsystem (WIP)
-A simple distributed filesystem using Go and grpc. More details to come.
+A simple distributed filesystem using Go and grpc. Still extremely WIP.
