@@ -70,10 +70,10 @@ func (s *server) Close() {
 	}
 }
 
-func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, size int64, fileUUID string) (empoweredServer *ServerEntry, err error) {
+func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, size int64, fileUUID string) (empoweredServer *ServerEntry, allocatedServers []ServerEntry, err error) {
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(servers), func(i, j int) { servers[i], servers[j] = servers[j], servers[i] })
-	var allocatedServers = make([]string, 0, replicationFactor)
+	allocatedServers = make([]ServerEntry, 0, replicationFactor)
 
 	//TODO: Separate into functions
 	//TODO: Improve concurrency
@@ -83,14 +83,14 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, 
 		c, err := internal_minion.NewClient(ctx, server.Ip)
 		if err != nil {
 			if err == ctx.Err() {
-				return nil, err
+				return nil, nil, err
 			}
 			continue
 		}
 		resp, err := c.Allocate(ctx, &pb.AllocationRequest{UUID: fileUUID, FileSize: size})
 		if err != nil {
 			if err == ctx.Err() {
-				return nil, err
+				return nil, nil, err
 			}
 			_ = c.Close()
 			continue
@@ -98,7 +98,7 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, 
 		server.AvailableSpace = resp.GetAvailableSpace()
 		if err := s.db.UpdateServerEntry(ctx, server); err != nil {
 			log.Println("Failed to update db on initiate upload: ", err.Error())
-			return nil, status.Errorf(codes.Internal, "Failed to update db")
+			return nil, nil, status.Errorf(codes.Internal, "Failed to update db")
 		}
 
 		if !resp.Allocated {
@@ -106,27 +106,30 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, 
 			continue
 		}
 
-		//If we already have enough servers, try to empower teh last one
-		if len(allocatedServers) == replicationFactor-1 {
+		allocatedServers = append(allocatedServers, server)
+		//If we already have enough servers, try to empower the last one
+		if len(allocatedServers) == replicationFactor {
+			serverIps := make([]string, 0, replicationFactor-1)
+			for _, server := range allocatedServers[:replicationFactor-1] {
+				serverIps = append(serverIps, server.Ip)
+			}
 			if _, err := c.Empower(ctx, &pb.EmpowermentRequest{
 				UUID:         fileUUID,
-				Subordinates: allocatedServers,
+				Subordinates: serverIps,
 			}); err != nil {
 				_ = c.Close()
-				return &server, nil
+				return &server, nil, nil
 			} else {
 				log.Printf("Error when empowering: %v", err)
 				_ = c.Close()
 				//Return the allocated server and exit the for loop
-				return &server, nil
+				return &server, allocatedServers, nil
 			}
-		} else {
-			allocatedServers = append(allocatedServers, server.Ip)
 		}
 
 		_ = c.Close()
 	}
-	return nil, status.Errorf(codes.ResourceExhausted,
+	return nil, nil, status.Errorf(codes.ResourceExhausted,
 		"couldn't find enough servers, only %d/%d available", len(allocatedServers), replicationFactor)
 }
 
@@ -151,16 +154,33 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 		return nil, status.Errorf(codes.ResourceExhausted, "Not enough servers for replication")
 	}
 
-	//TODO: Save file data to db
 	newuuid, err := uuid.NewUUID()
 	if err != nil {
 		log.Println("Failed to create UUID: ", err.Error())
 		return nil, status.Errorf(codes.Internal, "Failed to create UUID")
 	}
 	fileuuid := newuuid.String()
-	empoweredServer, err := s.allocateAndEmpower(ctx, servers, in.GetFileSize(), fileuuid)
+
+	empoweredServer, allocatedServers, err := s.allocateAndEmpower(ctx, servers, in.GetFileSize(), fileuuid)
 	if err != nil {
 		return nil, err
+	}
+
+	serverUUIDs := make([]string, len(allocatedServers))
+	for _, server := range allocatedServers {
+		serverUUIDs = append(serverUUIDs, server.UUID)
+	}
+
+	if err := s.db.CreateFileEntry(ctx, FileEntry{
+
+		UUID:        fileuuid,
+		Name:        in.GetFileName(),
+		Size:        in.GetFileSize(),
+		ServerUUIDs: serverUUIDs,
+		Available:   false,
+	}); err != nil {
+		log.Printf("Failed to create file entry on db: %v", err)
+		return nil, status.Errorf(codes.Internal, "Failed to create file entry on db: %v", err)
 	}
 
 	return &pb.FileUploadResponse{

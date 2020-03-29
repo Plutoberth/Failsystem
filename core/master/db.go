@@ -31,7 +31,7 @@ type FileEntry struct {
 	UUID        string      `bson:"_id"`
 	Name        string      `bson:"Name"`
 	Size        int64       `bson:"Size"`
-	ServerUUIDs []byte      `bson:"ServerUUIDs"`
+	ServerUUIDs []string    `bson:"ServerUUIDs"`
 	Available   bool        `bson:"Available"`
 	Hash        pb.DataHash `bson:"Hash"`
 }
@@ -139,17 +139,6 @@ func (m *mongoDataStore) FinalizeFileEntry(ctx context.Context, fileUUID string,
 	return nil
 }
 
-func (m *mongoDataStore) UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error {
-	_, err := m.db.Collection(fileCollection).UpdateOne(ctx, bson.M{"_id": fileUUID},
-		bson.M{"$addToSet": bson.M{"ServerUUIDs": serverUUID}}, options.Update())
-	if err != nil {
-		//Intentionally not wrapping so callers wouldn't depend on error
-		return fmt.Errorf("update file failed: %v", err)
-	}
-
-	return nil
-}
-
 func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error) {
 	var res = new(FileEntry)
 	findResult := m.db.Collection(fileCollection).FindOne(ctx, bson.M{"_id": UUID}, options.FindOne())
@@ -160,6 +149,17 @@ func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEn
 		return nil, fmt.Errorf("find file failed: %v", err)
 	}
 	return res, nil
+}
+
+func (m *mongoDataStore) UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error {
+	_, err := m.db.Collection(fileCollection).UpdateOne(ctx, bson.M{"_id": fileUUID},
+		bson.M{"$addToSet": bson.M{"ServerUUIDs": serverUUID}}, options.Update())
+	if err != nil {
+		//Intentionally not wrapping so callers wouldn't depend on error
+		return fmt.Errorf("update file failed: %v", err)
+	}
+
+	return nil
 }
 
 func (m *mongoDataStore) GetServersWithEnoughSpace(ctx context.Context, requestedSize int64) ([]ServerEntry, error) {
