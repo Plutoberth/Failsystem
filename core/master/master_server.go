@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/plutoberth/Failsystem/core/minion/internal_minion"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 	"log"
 	"net"
+	"time"
 )
 
 //Server interface defines methods that the caller may use to host the Master grpc service.
@@ -29,7 +31,8 @@ type server struct {
 
 const (
 	maxPort           uint = 2 << 16 // 65536
-	replicationFactor uint = 3
+	replicationFactor      = 3
+	minionTimeout          = 3 * time.Second
 )
 
 //NewServer - Initializes a new master Server.
@@ -65,10 +68,47 @@ func (s *server) Close() {
 	}
 }
 
+
+func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, size int64, fileuuid string) (empoweredServer *ServerEntry, err error) {
+	//TODO: randomize order
+	//TODO: Improve concurrency
+	//This section could heavily benefit from connecting to the servers and allocating concurrently.
+	//Doing this properly, especially with db updates, is extremely difficult, so it will be kept for a future version.
+	for _, server := range servers {
+		c, err := internal_minion.NewClient(ctx, server.Ip)
+		if err != nil {
+			if err == ctx.Err() {
+				return nil, status.Errorf(codes.DeadlineExceeded, ctx.Err().Error())
+			}
+			continue
+		}
+		resp, err := c.Allocate(ctx, &pb.AllocationRequest{UUID: fileuuid, FileSize:size})
+		if err != nil {
+			if err == ctx.Err() {
+				return nil, status.Errorf(codes.DeadlineExceeded, ctx.Err().Error())
+			}
+			_ = c.Close()
+			continue
+		}
+		server.AvailableSpace = resp.GetAvailableSpace()
+		if err := s.db.UpdateServerEntry(ctx, server); err != nil {
+			log.Println("Failed to update db on initiate upload: ", err.Error())
+			return nil, status.Errorf(codes.Internal, "Failed to update db")
+		}
+		if !resp.Allocated {
+			_ = c.Close()
+			continue
+		}
+
+	}
+}
+
 func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadRequest) (*pb.FileUploadResponse, error) {
+
 	if in.GetFileSize() <= 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "File size must be greater than zero")
 	}
+
 	fileUUID := in.GetFileName()
 	if _, err := uuid.Parse(fileUUID); err != nil {
 		return nil, fmt.Errorf("\"%v\" is not a valid UUID", fileUUID)
@@ -79,7 +119,26 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 		log.Printf("Error when fetching servers with enough space: %v", err)
 		return nil, status.Errorf(codes.Internal, "Database fetch failed")
 	}
-	fmt.Printf("%+v\n", servers)
+
+	if len(servers) < replicationFactor {
+		return nil, status.Errorf(codes.ResourceExhausted, "Not enough servers for replication")
+	}
+
+	newuuid, err := uuid.NewUUID()
+	if err != nil {
+		log.Println("Failed to create UUID: ", err.Error())
+		return nil, status.Errorf(codes.Internal, "Failed to create UUID")
+	}
+	fileuuid := newuuid.String()
+
+
+
+}
+
+
+
+
+
 	return &pb.FileUploadResponse{}, nil
 }
 
