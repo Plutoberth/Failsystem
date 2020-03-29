@@ -22,8 +22,8 @@ func getRandomData(size int) []byte {
 	return data
 }
 
-func getRandomUUID() string {
-	id, _ := uuid.NewUUID()
+func getUUID() string {
+	id, _ := uuid.New()
 	return id.String()
 }
 
@@ -35,7 +35,7 @@ func TestFolderClean(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idStr := getRandomUUID()
+	idStr := getUUID()
 
 	success, err := m.AllocateSpace(context.Background(), idStr, fileSize)
 	if err != nil {
@@ -103,7 +103,7 @@ func TestFileLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idStr := getRandomUUID()
+	idStr := getUUID()
 
 	success, err := m.AllocateSpace(context.Background(), idStr, fileSize)
 	if err != nil {
@@ -141,7 +141,7 @@ func TestQuotaLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	success, err := m.AllocateSpace(context.Background(), getRandomUUID(), quota*2)
+	success, err := m.AllocateSpace(context.Background(), getUUID(), quota*2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestQuotaLimits(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	uuidToCancel := getRandomUUID()
+	uuidToCancel := getUUID()
 
 	success, err = m.AllocateSpace(ctx, uuidToCancel, quota*0.7)
 
@@ -162,7 +162,7 @@ func TestQuotaLimits(t *testing.T) {
 	}
 
 	//Should fail due to exceeding quota
-	success, err = m.AllocateSpace(context.Background(), getRandomUUID(), quota*0.5)
+	success, err = m.AllocateSpace(context.Background(), getUUID(), quota*0.5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestQuotaLimits(t *testing.T) {
 	time.Sleep(time.Millisecond * 100)
 
 	//Should succeed after cancelling because the allocation was freed
-	success, err = m.AllocateSpace(context.Background(), getRandomUUID(), quota*0.5)
+	success, err = m.AllocateSpace(context.Background(), getUUID(), quota*0.5)
 	if err != nil {
 		t.Fatal(err)
 	}
