@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"log"
+	"math/rand"
 	"net"
 	"time"
 )
@@ -69,8 +70,12 @@ func (s *server) Close() {
 }
 
 
-func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, size int64, fileuuid string) (empoweredServer *ServerEntry, err error) {
-	//TODO: randomize order
+func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, size int64, fileUUID string) (empoweredServer *ServerEntry, err error) {
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(servers), func(i, j int) { servers[i], servers[j] = servers[j], servers[i] })
+	var allocatedServers = make([]string, 0, replicationFactor)
+
+	//TODO: Separate into functions
 	//TODO: Improve concurrency
 	//This section could heavily benefit from connecting to the servers and allocating concurrently.
 	//Doing this properly, especially with db updates, is extremely difficult, so it will be kept for a future version.
@@ -78,14 +83,14 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, 
 		c, err := internal_minion.NewClient(ctx, server.Ip)
 		if err != nil {
 			if err == ctx.Err() {
-				return nil, status.Errorf(codes.DeadlineExceeded, ctx.Err().Error())
+				return nil, err
 			}
 			continue
 		}
-		resp, err := c.Allocate(ctx, &pb.AllocationRequest{UUID: fileuuid, FileSize:size})
+		resp, err := c.Allocate(ctx, &pb.AllocationRequest{UUID: fileUUID, FileSize:size})
 		if err != nil {
 			if err == ctx.Err() {
-				return nil, status.Errorf(codes.DeadlineExceeded, ctx.Err().Error())
+				return nil, err
 			}
 			_ = c.Close()
 			continue
@@ -95,10 +100,31 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, 
 			log.Println("Failed to update db on initiate upload: ", err.Error())
 			return nil, status.Errorf(codes.Internal, "Failed to update db")
 		}
+
 		if !resp.Allocated {
 			_ = c.Close()
 			continue
 		}
+
+		//If we already have enough servers, try to empower teh last one
+		if len(allocatedServers) == replicationFactor - 1 {
+			if _, err := c.Empower(ctx, &pb.EmpowermentRequest{
+				UUID:         fileUUID,
+				Subordinates: allocatedServers,
+			}); err != nil {
+				_ = c.Close()
+				return &server, nil
+			} else {
+				log.Printf("Error when empowering: %v", err)
+				_ = c.Close()
+				//Return the allocated server and exit the for loop
+				return &server, nil
+			}
+		} else {
+			allocatedServers = append(allocatedServers, server.Ip)
+		}
+
+		_ = c.Close()
 
 	}
 }
