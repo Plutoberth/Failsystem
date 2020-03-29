@@ -239,7 +239,7 @@ func (s *server) Beat(ctx context.Context, in *pb.Heartbeat) (*pb.HeartBeatRespo
 	return &pb.HeartBeatResponse{}, s.updateServerDetails(ctx, in.GetUUID(), in.GetAvailableSpace(), in.GetPort())
 }
 
-func (s *server) FinalizeUpload(ctx context.Context, in *pb.FinalizeUploadMessage) (*pb.FinalizeUploadResponse, error) {
+func (s *server) FinalizeUpload(ctx context.Context, in *pb.FinalizeUploadRequest) (*pb.FinalizeUploadResponse, error) {
 	err := s.db.FinalizeFileEntry(ctx, in.GetFileUUID(), *in.GetHash())
 	if err != nil {
 		return nil, UpdateDbFailed
