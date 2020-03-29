@@ -12,6 +12,7 @@ import (
 type Client interface {
 	Heartbeat(ctx context.Context, heartbeat *pb.Heartbeat) error
 	Announce(ctx context.Context, announcement *pb.Announcement) error
+	FinalizeUpload(ctx context.Context, req *pb.FinalizeUploadRequest) error
 	Close() error
 }
 
@@ -53,6 +54,13 @@ func (c *client) Heartbeat(ctx context.Context, heartbeat *pb.Heartbeat) error {
 func (c *client) Announce(ctx context.Context, announcement *pb.Announcement) error {
 	if _, err := c.client.Announce(ctx, announcement); err != nil {
 		return fmt.Errorf("announcement failed: %w", err)
+	}
+	return nil
+}
+
+func (c *client) FinalizeUpload(ctx context.Context, req *pb.FinalizeUploadRequest) error {
+	if _, err := c.client.FinalizeUpload(ctx, req); err != nil {
+		return fmt.Errorf("failed to finalize upload: %w", err)
 	}
 	return nil
 }

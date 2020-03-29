@@ -306,8 +306,8 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	}
 
 	if err := file.Close(); err != nil {
-		log.Printf("UploadFile: Failed when closing - %v", err)
-		return status.Error(codes.Internal, "Failed when finalizing the upload")
+		log.Printf("UploadFile: Failed while closing the file - %v", err)
+		return status.Error(codes.Internal, "Failed while closing the file")
 	}
 
 	err = s.finalizeSubUploads(subWriters, minionClients)
@@ -315,9 +315,20 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 		return err
 	}
 
-	//TODO: Notify master that the upload was successful
+	master, err := internal_master.NewClient(stream.Context(), s.masterAddress)
+	if err != nil {
+		log.Printf("UploadFile: Failed when dialing to master: %v", err)
+		return status.Errorf(codes.Internal, "Failed while finalizing upload on master")
+	}
+	defer master.Close()
+	if err := master.FinalizeUpload(stream.Context(), &pb.FinalizeUploadRequest{
+		ServerUUID: s.uuid,
+		FileUUID:   filename,
+	}); err != nil {
+		return err
+	}
 
-	return err
+	return nil
 }
 
 func (s *server) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_DownloadFileServer) (err error) {

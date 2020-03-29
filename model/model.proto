@@ -29,7 +29,7 @@ service MinionToMaster {
     //Beat periodically to indicate that the minion is still alive.
     rpc Beat(Heartbeat) returns (HeartBeatResponse);
     //Called by the minion to finalize an upload after it finishes replicating it.
-    rpc FinalizeUpload(FinalizeUploadMessage) returns (FinalizeUploadResponse);
+    rpc FinalizeUpload (FinalizeUploadRequest) returns (FinalizeUploadResponse);
 }
 
 enum HashType {
@@ -129,7 +129,7 @@ message Heartbeat {
 
 message HeartBeatResponse {}
 
-message FinalizeUploadMessage {
+message FinalizeUploadRequest {
     string serverUUID = 1;
     string fileUUID = 2;
     DataHash hash = 3;
