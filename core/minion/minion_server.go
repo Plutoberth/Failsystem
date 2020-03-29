@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/plutoberth/Failsystem/core/master"
+	"github.com/plutoberth/Failsystem/core/master/internal_master"
 	"github.com/plutoberth/Failsystem/core/streams"
 	"github.com/plutoberth/Failsystem/pkg/foldermgr"
 	"io"
@@ -33,7 +33,7 @@ type Server interface {
 type server struct {
 	pb.UnimplementedMinionServer
 	pb.UnimplementedMasterToMinionServer
-	address       string
+	port          uint
 	uuid          string
 	folder        foldermgr.ManagedFolder
 	server        *grpc.Server
@@ -60,7 +60,7 @@ func NewServer(port uint, folderPath string, quota int64, masterAddress string) 
 	if port >= maxPort {
 		return nil, fmt.Errorf("port must be between 0 and %v", maxPort)
 	}
-	s.address = fmt.Sprintf("0.0.0.0:%v", port)
+	s.port = port
 
 	folder, err := foldermgr.NewManagedFolder(quota, folderPath)
 	if err != nil {
@@ -95,7 +95,7 @@ func NewServer(port uint, folderPath string, quota int64, masterAddress string) 
 }
 
 func (s *server) Serve() error {
-	lis, err := net.Listen("tcp", s.address)
+	lis, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", s.port))
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (s *server) Serve() error {
 	pb.RegisterMinionServer(s.server, s)
 	pb.RegisterMasterToMinionServer(s.server, s)
 
-	go s.Heartbeat()
+	go s.heartbeatLoop()
 	err = s.server.Serve(lis)
 
 	return err
@@ -117,10 +117,13 @@ func (s *server) Close() {
 	}
 }
 
-func (s *server) AnnounceToMaster() error {
-	var announcement pb.Announcement
-	announcement.UUID = s.uuid
-	announcement.AvailableSpace = s.folder.GetRemainingSpace()
+func (s *server) announceToMaster() error {
+	var announcement = pb.Announcement{
+		UUID:           s.uuid,
+		AvailableSpace: s.folder.GetRemainingSpace(),
+		Port:           int32(s.port),
+	}
+
 	resp, err := s.folder.ListFiles()
 	if err != nil {
 		return fmt.Errorf("CRITICAL: Failed to list files in folder: %v", err)
@@ -133,7 +136,8 @@ func (s *server) AnnounceToMaster() error {
 		})
 	}
 
-	mtmClient, err := master.NewMTMClient(s.masterAddress)
+	ctx, _ := context.WithTimeout(context.Background(), HeartbeatInterval)
+	mtmClient, err := internal_master.NewClient(ctx, s.masterAddress)
 	if err != nil {
 		return fmt.Errorf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
 
@@ -150,21 +154,26 @@ func (s *server) AnnounceToMaster() error {
 	return nil
 }
 
-func (s *server) Heartbeat() {
+func (s *server) heartbeatLoop() {
 	//Announce first
-	if err := s.AnnounceToMaster(); err != nil {
+	if err := s.announceToMaster(); err != nil {
 		log.Printf("%v", err)
 	}
 	for range time.Tick(HeartbeatInterval) {
 		if s.server == nil {
 			break
 		}
-		mtmClient, err := master.NewMTMClient(s.masterAddress)
+		ctx, _ := context.WithTimeout(context.Background(), HeartbeatInterval)
+		mtmClient, err := internal_master.NewClient(ctx, s.masterAddress)
 		if err != nil {
 			log.Printf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
 			continue
 		}
-		if err = mtmClient.Heartbeat(context.Background(), s.uuid, s.folder.GetRemainingSpace()); err != nil {
+		if err = mtmClient.Heartbeat(context.Background(), &pb.Heartbeat{
+			UUID:           s.uuid,
+			AvailableSpace: s.folder.GetRemainingSpace(),
+			Port:           int32(s.port),
+		}); err != nil {
 			log.Printf("CRITICAL: Failed to send a heartbeat to the master (%v): %v", s.masterAddress, err)
 		}
 		if err := mtmClient.Close(); err != nil {
@@ -174,10 +183,8 @@ func (s *server) Heartbeat() {
 }
 
 //Create the subordinate uploads
-func (s *server) createSubUploads(uuid string) (subWriters []io.WriteCloser, minionClients []Client, err error) {
+func (s *server) createSubUploads(subs []string, uuid string) (subWriters []io.WriteCloser, minionClients []Client, err error) {
 	s.mtx.RLock()
-	subs := s.empowerments[uuid]
-	delete(s.empowerments, uuid)
 	s.mtx.RUnlock()
 	if subs != nil {
 		subWriters = make([]io.WriteCloser, len(subs))
@@ -226,6 +233,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 		filename      string
 		minionClients []Client
 		subWriters    []io.WriteCloser
+		amEmpowered   = false
 	)
 
 	if req, err := stream.Recv(); err != nil {
@@ -239,16 +247,22 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 		case *pb.UploadRequest_UUID:
 			//TODO: Using this technique is inefficient CPU-wise. The hash is performed n times.
 			//In practice, 99% of the time is in network IO, so it doesn't really matter.
-			subWriters, minionClients, err = s.createSubUploads(data.UUID)
+			filename = data.UUID
+
+			if _, err := uuid.Parse(filename); err != nil {
+				return status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
+			}
+
+			subIps, ok := s.empowerments[filename]
+			if ok {
+				subWriters, minionClients, err = s.createSubUploads(subIps, filename)
+				amEmpowered = true
+			}
+
 			if err != nil {
 				return err
 			}
-			filename = data.UUID
 		}
-	}
-
-	if _, err := uuid.Parse(filename); err != nil {
-		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
 	}
 
 	if file, err = s.folder.WriteToFile(filename); err != nil {
@@ -296,18 +310,31 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	}
 
 	if err := file.Close(); err != nil {
-		log.Printf("UploadFile: Failed when closing - %v", err)
-		return status.Error(codes.Internal, "Failed when finalizing the upload")
+		log.Printf("UploadFile: Failed while closing the file - %v", err)
+		return status.Error(codes.Internal, "Failed while closing the file")
 	}
 
-	err = s.finalizeSubUploads(subWriters, minionClients)
-	if err != nil {
-		return err
+	if amEmpowered {
+		err = s.finalizeSubUploads(subWriters, minionClients)
+		if err != nil {
+			return err
+		}
+
+		master, err := internal_master.NewClient(stream.Context(), s.masterAddress)
+		if err != nil {
+			log.Printf("UploadFile: Failed when dialing to master: %v", err)
+			return status.Errorf(codes.Internal, "Failed while finalizing upload on master")
+		}
+		defer master.Close()
+		if err := master.FinalizeUpload(stream.Context(), &pb.FinalizeUploadRequest{
+			ServerUUID: s.uuid,
+			FileUUID:   filename,
+		}); err != nil {
+			return err
+		}
 	}
 
-	//TODO: Notify master that the upload was successful
-
-	return err
+	return nil
 }
 
 func (s *server) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_DownloadFileServer) (err error) {
@@ -316,11 +343,11 @@ func (s *server) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Download
 	)
 
 	if _, err := uuid.Parse(req.GetUUID()); err != nil {
-		return status.Errorf(codes.InvalidArgument, "Invalid UUID")
+		return status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 	}
 
 	if file, err = s.folder.ReadFile(req.GetUUID()); err != nil {
-		return status.Errorf(codes.NotFound, "UUID not present")
+		return status.Errorf(codes.NotFound, "File not present")
 	}
 
 	chunkWriter := streams.NewFileChunkSenderWrapper(stream)
@@ -352,7 +379,7 @@ func (s *server) Empower(ctx context.Context, in *pb.EmpowermentRequest) (*pb.Em
 	_, _ = ctx, in
 
 	if _, err := uuid.Parse(in.GetUUID()); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "Invalid UUID")
+		return nil, status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 	}
 
 	if !s.folder.CheckIfAllocated(in.GetUUID()) {

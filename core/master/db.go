@@ -3,6 +3,7 @@ package master
 import (
 	"context"
 	"fmt"
+	pb "github.com/plutoberth/Failsystem/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -13,8 +14,11 @@ type Datastore interface {
 	//LastUpdate shall be automatically updated.
 	UpdateServerEntry(ctx context.Context, entry ServerEntry) error
 	GetServerEntry(ctx context.Context, UUID string) (*ServerEntry, error)
+	GetServersWithEnoughSpace(ctx context.Context, requestedSize int64) ([]ServerEntry, error)
+
 	CreateFileEntry(ctx context.Context, entry FileEntry) error
-	UpdateFileHosts(ctx context.Context, FileUUID string, ServerUUID string) error
+	UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error
+	FinalizeFileEntry(ctx context.Context, fileUUID string, hash pb.DataHash) error
 	GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error)
 }
 
@@ -26,10 +30,12 @@ type ServerEntry struct {
 }
 
 type FileEntry struct {
-	UUID        string `bson:"_id"`
-	Name        string `bson:"Name"`
-	Size        int64  `bson:"Size"`
-	ServerUUIDs []byte `bson:"ServerUUIDs"`
+	UUID        string      `bson:"_id"`
+	Name        string      `bson:"Name"`
+	Size        int64       `bson:"Size"`
+	ServerUUIDs []string    `bson:"ServerUUIDs"`
+	Available   bool        `bson:"Available"`
+	Hash        pb.DataHash `bson:"Hash"`
 }
 
 type Lease struct {
@@ -112,22 +118,24 @@ func (m *mongoDataStore) GetServerEntry(ctx context.Context, UUID string) (*Serv
 	return res, nil
 }
 
-func (m *mongoDataStore) UpdateFileHosts(ctx context.Context, FileUUID string, ServerUUID string) error {
-	_, err := m.db.Collection(fileCollection).UpdateOne(ctx, bson.M{"_id": FileUUID},
-		bson.M{"$addToSet": bson.M{"ServerUUIDs": ServerUUID}}, options.Update())
+func (m *mongoDataStore) CreateFileEntry(ctx context.Context, entry FileEntry) error {
+	entry.Available = false
+	entry.Hash = pb.DataHash{}
+	_, err := m.db.Collection(fileCollection).InsertOne(ctx, bson.M{"$set": entry}, options.InsertOne())
 	if err != nil {
 		//Intentionally not wrapping so callers wouldn't depend on error
-		return fmt.Errorf("update file failed: %v", err)
+		return fmt.Errorf("create file failed: %v", err)
 	}
 
 	return nil
 }
 
-func (m *mongoDataStore) CreateFileEntry(ctx context.Context, entry FileEntry) error {
-	_, err := m.db.Collection(fileCollection).InsertOne(ctx, bson.M{"$set": entry}, options.InsertOne())
+func (m *mongoDataStore) FinalizeFileEntry(ctx context.Context, fileUUID string, hash pb.DataHash) error {
+	_, err := m.db.Collection(fileCollection).UpdateOne(ctx, bson.M{"_id": fileUUID},
+		bson.M{"$set": bson.M{"Available": true, "Hash": hash}}, options.Update())
 	if err != nil {
 		//Intentionally not wrapping so callers wouldn't depend on error
-		return fmt.Errorf("create file failed: %v", err)
+		return fmt.Errorf("update file failed: %v", err)
 	}
 
 	return nil
@@ -143,4 +151,27 @@ func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEn
 		return nil, fmt.Errorf("find file failed: %v", err)
 	}
 	return res, nil
+}
+
+func (m *mongoDataStore) UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error {
+	_, err := m.db.Collection(fileCollection).UpdateOne(ctx, bson.M{"_id": fileUUID},
+		bson.M{"$addToSet": bson.M{"ServerUUIDs": serverUUID}}, options.Update())
+	if err != nil {
+		//Intentionally not wrapping so callers wouldn't depend on error
+		return fmt.Errorf("update file failed: %v", err)
+	}
+
+	return nil
+}
+
+func (m *mongoDataStore) GetServersWithEnoughSpace(ctx context.Context, requestedSize int64) ([]ServerEntry, error) {
+	var results = make([]ServerEntry, 0, replicationFactor*2)
+	cursor, err := m.db.Collection(serverCollection).Find(ctx, bson.M{"AvailableSpace": bson.M{"$gt": requestedSize}}, options.Find())
+	if err != nil {
+		return nil, fmt.Errorf("find available servers failed: %v", err)
+	}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }

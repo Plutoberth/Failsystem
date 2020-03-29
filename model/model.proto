@@ -28,6 +28,8 @@ service MinionToMaster {
     rpc Announce(Announcement) returns (AnnounceResponse);
     //Beat periodically to indicate that the minion is still alive.
     rpc Beat(Heartbeat) returns (HeartBeatResponse);
+    //Called by the minion to finalize an upload after it finishes replicating it.
+    rpc FinalizeUpload (FinalizeUploadRequest) returns (FinalizeUploadResponse);
 }
 
 enum HashType {
@@ -113,14 +115,24 @@ message Announcement {
     string UUID = 1;
     repeated FileEntry entries = 2;
     int64 availableSpace = 3;
+    int32 port = 4;
 }
 
 message AnnounceResponse {}
 
 message Heartbeat {
+    //UUID of the minion server
     string UUID = 1;
     int64 availableSpace = 2;
+    int32 port = 3;
 }
 
 message HeartBeatResponse {}
 
+message FinalizeUploadRequest {
+    string serverUUID = 1;
+    string fileUUID = 2;
+    DataHash hash = 3;
+}
+
+message FinalizeUploadResponse {}
