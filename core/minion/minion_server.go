@@ -119,9 +119,9 @@ func (s *server) Close() {
 
 func (s *server) announceToMaster() error {
 	var announcement = pb.Announcement{
-		UUID:                 s.uuid,
-		AvailableSpace:       s.folder.GetRemainingSpace(),
-		Port:                 int32(s.port),
+		UUID:           s.uuid,
+		AvailableSpace: s.folder.GetRemainingSpace(),
+		Port:           int32(s.port),
 	}
 
 	resp, err := s.folder.ListFiles()
@@ -170,9 +170,9 @@ func (s *server) heartbeatLoop() {
 			continue
 		}
 		if err = mtmClient.Heartbeat(context.Background(), &pb.Heartbeat{
-			UUID:                 s.uuid,
-			AvailableSpace:       s.folder.GetRemainingSpace(),
-			Port:                 int32(s.port),
+			UUID:           s.uuid,
+			AvailableSpace: s.folder.GetRemainingSpace(),
+			Port:           int32(s.port),
 		}); err != nil {
 			log.Printf("CRITICAL: Failed to send a heartbeat to the master (%v): %v", s.masterAddress, err)
 		}

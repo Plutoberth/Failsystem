@@ -43,7 +43,7 @@ func (c *client) Close() (err error) {
 }
 
 func (c *client) Heartbeat(ctx context.Context, heartbeat *pb.Heartbeat) error {
-	_, err := c.client.Beat(ctx,heartbeat)
+	_, err := c.client.Beat(ctx, heartbeat)
 	if err != nil {
 		return fmt.Errorf("heartbeat failed: %w", err)
 	}

@@ -49,4 +49,3 @@ func (c *client) InitiateFileUpload(ctx context.Context, req *pb.FileUploadReque
 func (c *client) InitiateFileRead(ctx context.Context, req *pb.FileReadRequest) (*pb.FileReadResponse, error) {
 	return c.client.InitiateFileRead(ctx, req)
 }
-

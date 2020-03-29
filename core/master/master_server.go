@@ -33,8 +33,10 @@ type server struct {
 const (
 	maxPort           uint = 2 << 16 // 65536
 	replicationFactor      = 3
-	minionTimeout          = 3 * time.Second
 )
+
+var UpdateDbFailed = status.Errorf(codes.Internal, "Failed to update database")
+var AccessDbFailed = status.Errorf(codes.Internal, "Failed to access database")
 
 //NewServer - Initializes a new master Server.
 func NewServer(port uint, db Datastore) (Server, error) {
@@ -98,7 +100,7 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, 
 		server.AvailableSpace = resp.GetAvailableSpace()
 		if err := s.db.UpdateServerEntry(ctx, server); err != nil {
 			log.Println("Failed to update db on initiate upload: ", err.Error())
-			return nil, nil, status.Errorf(codes.Internal, "Failed to update db")
+			return nil, nil, UpdateDbFailed
 		}
 
 		if !resp.Allocated {
@@ -147,7 +149,7 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 
 	if err != nil {
 		log.Printf("Error when fetching servers with enough space: %v", err)
-		return nil, status.Errorf(codes.Internal, "Database fetch failed")
+		return nil, AccessDbFailed
 	}
 
 	if len(servers) < replicationFactor {
@@ -179,7 +181,7 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 		Available:   false,
 	}); err != nil {
 		log.Printf("Failed to create file entry on db: %v", err)
-		return nil, status.Errorf(codes.Internal, "Failed to create file entry on db: %v", err)
+		return nil, UpdateDbFailed
 	}
 
 	return &pb.FileUploadResponse{
@@ -196,11 +198,11 @@ func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (
 	file, err := s.db.GetFileEntry(ctx, fileUUID)
 	if err != nil {
 		log.Printf("Failed to access db on InitiateFileRead: %v", err)
-		return nil, status.Errorf(codes.Internal, "Failed to access db")
+		return nil, AccessDbFailed
 	}
 	return &pb.FileReadResponse{
-		MinionServerIp:       file.ServerUUIDs[rand.Intn(len(file.ServerUUIDs))],
-		Hash:                 &file.Hash,
+		MinionServerIp: file.ServerUUIDs[rand.Intn(len(file.ServerUUIDs))],
+		Hash:           &file.Hash,
 	}, nil
 }
 
@@ -217,7 +219,7 @@ func (s *server) updateServerDetails(ctx context.Context, UUID string, available
 	})
 	if err != nil {
 		log.Printf("Failed when writing heartbeat to db: %v", err)
-		return status.Errorf(codes.Internal, "Failed to update database")
+		return UpdateDbFailed
 	}
 	return nil
 }
@@ -226,7 +228,7 @@ func (s *server) Announce(ctx context.Context, in *pb.Announcement) (*pb.Announc
 	if in.GetEntries() != nil {
 		for _, file := range in.GetEntries() {
 			if err := s.db.UpdateFileHosts(ctx, file.GetUUID(), in.GetUUID()); err != nil {
-				return nil, status.Errorf(codes.Internal, "Failed to update database")
+				return nil, UpdateDbFailed
 			}
 		}
 	}
@@ -238,5 +240,9 @@ func (s *server) Beat(ctx context.Context, in *pb.Heartbeat) (*pb.HeartBeatRespo
 }
 
 func (s *server) FinalizeUpload(ctx context.Context, in *pb.FinalizeUploadMessage) (*pb.FinalizeUploadResponse, error) {
-	panic("not implemented")
+	err := s.db.FinalizeFileEntry(ctx, in.GetFileUUID(), *in.GetHash())
+	if err != nil {
+		return nil, UpdateDbFailed
+	}
+	return &pb.FinalizeUploadResponse{}, nil
 }
