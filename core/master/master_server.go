@@ -189,7 +189,19 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 }
 
 func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (*pb.FileReadResponse, error) {
-	panic("implement me")
+	fileUUID := in.GetUUID()
+	if _, err := uuid.Parse(fileUUID); err != nil {
+		return nil, fmt.Errorf("\"%v\" is not a valid UUID", fileUUID)
+	}
+	file, err := s.db.GetFileEntry(ctx, fileUUID)
+	if err != nil {
+		log.Printf("Failed to access db on InitiateFileRead: %v", err)
+		return nil, status.Errorf(codes.Internal, "Failed to access db")
+	}
+	return &pb.FileReadResponse{
+		MinionServerIp:       file.ServerUUIDs[rand.Intn(len(file.ServerUUIDs))],
+		Hash:                 &file.Hash,
+	}, nil
 }
 
 func (s *server) updateServerDetails(ctx context.Context, UUID string, availableSpace int64, port int32) error {
