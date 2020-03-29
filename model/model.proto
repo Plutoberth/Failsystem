@@ -120,6 +120,7 @@ message Announcement {
 message AnnounceResponse {}
 
 message Heartbeat {
+    //UUID of the minion server
     string UUID = 1;
     int64 availableSpace = 2;
 }
@@ -127,7 +128,9 @@ message Heartbeat {
 message HeartBeatResponse {}
 
 message FinalizeUploadMessage {
-    DataHash hash = 1;
+    string serverUUID = 1;
+    string fileUUID = 2;
+    DataHash hash = 3;
 }
 
 message FinalizeUploadResponse {}

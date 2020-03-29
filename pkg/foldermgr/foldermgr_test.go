@@ -23,7 +23,10 @@ func getRandomData(size int) []byte {
 }
 
 func getUUID() string {
-	id, _ := uuid.New()
+	id, err := uuid.NewUUID()
+	if err != nil {
+		log.Fatalf("Failed to generate UUID: %v", err)
+	}
 	return id.String()
 }
 
