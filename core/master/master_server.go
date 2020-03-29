@@ -25,7 +25,7 @@ type Server interface {
 type server struct {
 	pb.UnimplementedMasterServer
 	pb.UnimplementedMinionToMasterServer
-	address string
+	port uint
 	server  *grpc.Server
 	db      Datastore
 }
@@ -42,14 +42,15 @@ func NewServer(port uint, db Datastore) (Server, error) {
 	if port >= maxPort {
 		return nil, fmt.Errorf("port must be between 0 and %v", maxPort)
 	}
-	s.address = fmt.Sprintf("0.0.0.0:%v", port)
+	s.port = port
 	s.db = db
 
 	return s, nil
 }
 
 func (s *server) Serve() error {
-	lis, err := net.Listen("tcp", s.address)
+	address :=  fmt.Sprintf("0.0.0.0:%v", s.port)
+	lis, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
 	}
@@ -57,7 +58,7 @@ func (s *server) Serve() error {
 	s.server = grpc.NewServer()
 	pb.RegisterMasterServer(s.server, s)
 	pb.RegisterMinionToMasterServer(s.server, s)
-	fmt.Println("Master is running at: ", s.address)
+	fmt.Println("Master is running at: ", address)
 	err = s.server.Serve(lis)
 	return err
 }

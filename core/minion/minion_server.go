@@ -33,7 +33,7 @@ type Server interface {
 type server struct {
 	pb.UnimplementedMinionServer
 	pb.UnimplementedMasterToMinionServer
-	address       string
+	port          uint
 	uuid          string
 	folder        foldermgr.ManagedFolder
 	server        *grpc.Server
@@ -60,7 +60,7 @@ func NewServer(port uint, folderPath string, quota int64, masterAddress string) 
 	if port >= maxPort {
 		return nil, fmt.Errorf("port must be between 0 and %v", maxPort)
 	}
-	s.address = fmt.Sprintf("0.0.0.0:%v", port)
+	s.port = port
 
 	folder, err := foldermgr.NewManagedFolder(quota, folderPath)
 	if err != nil {
@@ -95,7 +95,7 @@ func NewServer(port uint, folderPath string, quota int64, masterAddress string) 
 }
 
 func (s *server) Serve() error {
-	lis, err := net.Listen("tcp", s.address)
+	lis, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", s.port))
 	if err != nil {
 		return err
 	}
