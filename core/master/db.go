@@ -57,6 +57,7 @@ type mongoDataStore struct {
 }
 
 const (
+	dbName           = "failsystemdb"
 	serverCollection = "servers"
 	fileCollection   = "files"
 	expiryIndex      = "expiryIndex"
@@ -79,7 +80,7 @@ func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
 		return nil, fmt.Errorf("failed to ping: %w", err)
 	}
 
-	database := client.Database("failnet")
+	database := client.Database(dbName)
 	_, _ = database.Collection(serverCollection).Indexes().DropOne(ctx, expiryIndex, options.DropIndexes())
 	_, err = database.Collection(serverCollection).Indexes().CreateOne(ctx,
 		mongo.IndexModel{Keys: bson.M{"LastUpdate": 1},
