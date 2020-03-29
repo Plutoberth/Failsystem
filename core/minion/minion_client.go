@@ -17,6 +17,7 @@ import (
 
 //Client interface defines methods that the caller may use to use the Minion grpc service.
 type Client interface {
+	//TODO: Add contexts
 	Upload(uuid string) (io.WriteCloser, error)
 	UploadByFilename(filepath string, uuid string) error
 	DownloadFile(uuid string, targetFile string) error
