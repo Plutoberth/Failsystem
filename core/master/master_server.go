@@ -172,7 +172,6 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 	}
 
 	if err := s.db.CreateFileEntry(ctx, FileEntry{
-
 		UUID:        fileuuid,
 		Name:        in.GetFileName(),
 		Size:        in.GetFileSize(),

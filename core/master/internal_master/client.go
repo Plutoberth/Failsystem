@@ -10,7 +10,7 @@ import (
 
 //Client interface defines methods that the caller may use to use the MinionToMaster grpc service.
 type Client interface {
-	Heartbeat(ctx context.Context, uuid string, availableSpace int64) error
+	Heartbeat(ctx context.Context, heartbeat *pb.Heartbeat) error
 	Announce(ctx context.Context, announcement *pb.Announcement) error
 	Close() error
 }
@@ -42,8 +42,8 @@ func (c *client) Close() (err error) {
 	return err
 }
 
-func (c *client) Heartbeat(ctx context.Context, uuid string, availableSpace int64) error {
-	_, err := c.client.Beat(ctx, &pb.Heartbeat{UUID: uuid, AvailableSpace: availableSpace})
+func (c *client) Heartbeat(ctx context.Context, heartbeat *pb.Heartbeat) error {
+	_, err := c.client.Beat(ctx,heartbeat)
 	if err != nil {
 		return fmt.Errorf("heartbeat failed: %w", err)
 	}
