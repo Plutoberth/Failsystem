@@ -183,10 +183,8 @@ func (s *server) heartbeatLoop() {
 }
 
 //Create the subordinate uploads
-func (s *server) createSubUploads(uuid string) (subWriters []io.WriteCloser, minionClients []Client, err error) {
+func (s *server) createSubUploads(subs []string, uuid string) (subWriters []io.WriteCloser, minionClients []Client, err error) {
 	s.mtx.RLock()
-	subs := s.empowerments[uuid]
-	delete(s.empowerments, uuid)
 	s.mtx.RUnlock()
 	if subs != nil {
 		subWriters = make([]io.WriteCloser, len(subs))
@@ -235,6 +233,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 		filename      string
 		minionClients []Client
 		subWriters    []io.WriteCloser
+		amEmpowered   = false
 	)
 
 	if req, err := stream.Recv(); err != nil {
@@ -254,7 +253,12 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 				return status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 			}
 
-			subWriters, minionClients, err = s.createSubUploads(filename)
+			subIps, ok := s.empowerments[filename]
+			if ok {
+				subWriters, minionClients, err = s.createSubUploads(subIps, filename)
+				amEmpowered = true
+			}
+
 			if err != nil {
 				return err
 			}
@@ -310,22 +314,24 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 		return status.Error(codes.Internal, "Failed while closing the file")
 	}
 
-	err = s.finalizeSubUploads(subWriters, minionClients)
-	if err != nil {
-		return err
-	}
+	if amEmpowered {
+		err = s.finalizeSubUploads(subWriters, minionClients)
+		if err != nil {
+			return err
+		}
 
-	master, err := internal_master.NewClient(stream.Context(), s.masterAddress)
-	if err != nil {
-		log.Printf("UploadFile: Failed when dialing to master: %v", err)
-		return status.Errorf(codes.Internal, "Failed while finalizing upload on master")
-	}
-	defer master.Close()
-	if err := master.FinalizeUpload(stream.Context(), &pb.FinalizeUploadRequest{
-		ServerUUID: s.uuid,
-		FileUUID:   filename,
-	}); err != nil {
-		return err
+		master, err := internal_master.NewClient(stream.Context(), s.masterAddress)
+		if err != nil {
+			log.Printf("UploadFile: Failed when dialing to master: %v", err)
+			return status.Errorf(codes.Internal, "Failed while finalizing upload on master")
+		}
+		defer master.Close()
+		if err := master.FinalizeUpload(stream.Context(), &pb.FinalizeUploadRequest{
+			ServerUUID: s.uuid,
+			FileUUID:   filename,
+		}); err != nil {
+			return err
+		}
 	}
 
 	return nil
