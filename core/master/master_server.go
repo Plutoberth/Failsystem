@@ -25,9 +25,9 @@ type Server interface {
 type server struct {
 	pb.UnimplementedMasterServer
 	pb.UnimplementedMinionToMasterServer
-	port uint
-	server  *grpc.Server
-	db      Datastore
+	port   uint
+	server *grpc.Server
+	db     Datastore
 }
 
 const (
@@ -49,7 +49,7 @@ func NewServer(port uint, db Datastore) (Server, error) {
 }
 
 func (s *server) Serve() error {
-	address :=  fmt.Sprintf("0.0.0.0:%v", s.port)
+	address := fmt.Sprintf("0.0.0.0:%v", s.port)
 	lis, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
@@ -70,7 +70,6 @@ func (s *server) Close() {
 	}
 }
 
-
 func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, size int64, fileUUID string) (empoweredServer *ServerEntry, err error) {
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(servers), func(i, j int) { servers[i], servers[j] = servers[j], servers[i] })
@@ -88,7 +87,7 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, 
 			}
 			continue
 		}
-		resp, err := c.Allocate(ctx, &pb.AllocationRequest{UUID: fileUUID, FileSize:size})
+		resp, err := c.Allocate(ctx, &pb.AllocationRequest{UUID: fileUUID, FileSize: size})
 		if err != nil {
 			if err == ctx.Err() {
 				return nil, err
@@ -108,7 +107,7 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, 
 		}
 
 		//If we already have enough servers, try to empower teh last one
-		if len(allocatedServers) == replicationFactor - 1 {
+		if len(allocatedServers) == replicationFactor-1 {
 			if _, err := c.Empower(ctx, &pb.EmpowermentRequest{
 				UUID:         fileUUID,
 				Subordinates: allocatedServers,
@@ -126,8 +125,9 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, 
 		}
 
 		_ = c.Close()
-
 	}
+	return nil, status.Errorf(codes.ResourceExhausted,
+		"couldn't find enough servers, only %d/%d available", len(allocatedServers), replicationFactor)
 }
 
 func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadRequest) (*pb.FileUploadResponse, error) {
@@ -151,22 +151,22 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 		return nil, status.Errorf(codes.ResourceExhausted, "Not enough servers for replication")
 	}
 
+	//TODO: Save file data to db
 	newuuid, err := uuid.NewUUID()
 	if err != nil {
 		log.Println("Failed to create UUID: ", err.Error())
 		return nil, status.Errorf(codes.Internal, "Failed to create UUID")
 	}
 	fileuuid := newuuid.String()
+	empoweredServer, err := s.allocateAndEmpower(ctx, servers, in.GetFileSize(), fileuuid)
+	if err != nil {
+		return nil, err
+	}
 
-
-
-}
-
-
-
-
-
-	return &pb.FileUploadResponse{}, nil
+	return &pb.FileUploadResponse{
+		UUID:              fileUUID,
+		EmpoweredMinionIp: empoweredServer.Ip,
+	}, nil
 }
 
 func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (*pb.FileReadResponse, error) {
