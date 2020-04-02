@@ -12,7 +12,7 @@ var folderPath = flag.String("folder", "./dataFolder", "The data folder's path."
 
 func main() {
 	flag.Parse()
-	server, err := minion.NewServer(*port, *folderPath, *quota, "127.0.0.1:1337")
+	server, err := minion.NewServer(*port, *folderPath, *quota, "192.168.99.100:1337")
 	if err != nil {
 		log.Fatalf("Failed while establishing server: %v", err)
 	}
