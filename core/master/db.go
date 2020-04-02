@@ -2,12 +2,14 @@ package master
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/plutoberth/Failsystem/core/minion"
 	pb "github.com/plutoberth/Failsystem/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"os"
 	"time"
 )
 
@@ -65,9 +67,22 @@ const (
 	serverTTL        = minion.HeartbeatInterval * 3
 )
 
+func getEnvs() (username string, password string, err error) {
+	username = os.Getenv("MONGO_INITDB_ROOT_USERNAME")
+	password = os.Getenv("MONGO_INITDB_ROOT_PASSWORD")
+	if username == "" || password == "" {
+		return "", "", errors.New("MONGO_INITDB_ROOT_USERNAME and MONGO_INITDB_ROOT_PASSWORD must be set.")
+	}
+	return username, password, nil
+}
+
 func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
+	username, password, err := getEnvs()
+	if err != nil {
+		return nil, err
+	}
 	clientOptions := options.Client().ApplyURI(fmt.Sprintf("mongodb://%s", address)).
-		SetAuth(options.Credential{Username: "root", Password: "failnet"})
+		SetAuth(options.Credential{Username: username, Password: password})
 
 	// Connect to MongoDB
 	client, err := mongo.Connect(ctx, clientOptions)

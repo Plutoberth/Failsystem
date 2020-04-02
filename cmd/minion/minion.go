@@ -4,6 +4,7 @@ import (
 	"flag"
 	"github.com/plutoberth/Failsystem/core/minion"
 	"log"
+	"os"
 )
 
 var port = flag.Uint("port", 31337, "The Server's port.")
@@ -12,7 +13,11 @@ var folderPath = flag.String("folder", "./dataFolder", "The data folder's path."
 
 func main() {
 	flag.Parse()
-	server, err := minion.NewServer(*port, *folderPath, *quota, "192.168.99.100:1337")
+	var masterAddress string
+	if masterAddress = os.Getenv("MASTER_ADDRESS"); masterAddress == "" {
+		log.Fatalf("MASTER_ADDRESS environment variable was not set.")
+	}
+	server, err := minion.NewServer(*port, *folderPath, *quota, masterAddress)
 	if err != nil {
 		log.Fatalf("Failed while establishing server: %v", err)
 	}

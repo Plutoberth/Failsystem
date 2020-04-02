@@ -1,0 +1,34 @@
+version: '3.7'
+
+services:
+  minion:
+    build:
+      dockerfile: ./cmd/minion/Dockerfile
+    ports:
+      - 31337:31337
+    environment:
+      - MASTER_ADDRESS="master:1337"
+
+  master:
+    build:
+      dockerfile: cmd/master/Dockerfile
+    restart: always
+    ports:
+      - 1337:1337
+    env_file:
+      - secrets.env
+
+  mongo:
+    image: mongo
+    restart: always
+    env_file:
+      - secrets.env
+
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - 8081:8081
+    env_file:
+      - secrets.env
+

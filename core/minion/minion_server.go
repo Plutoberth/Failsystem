@@ -51,7 +51,7 @@ const (
 	maxPort           uint   = 2 << 16 // 65536
 	delayTime                = time.Second * 10
 	uuidFile                 = "uuid"
-	HeartbeatInterval        = time.Second * 45
+	HeartbeatInterval        = time.Second * 5
 )
 
 //NewServer - Initializes a new minion server.
@@ -142,7 +142,6 @@ func (s *server) announceToMaster() error {
 	mtmClient, err := internal_master.NewClient(ctx, s.masterAddress)
 	if err != nil {
 		return fmt.Errorf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
-
 	}
 	defer func() {
 		if err := mtmClient.Close(); err != nil {
