@@ -3,16 +3,17 @@ version: '3.7'
 services:
   minion:
     build:
+      context: .
       dockerfile: ./cmd/minion/Dockerfile
     ports:
       - 31337:31337
     environment:
-      - MASTER_ADDRESS="master:1337"
+      - MASTER_ADDRESS=master:1337
 
   master:
     build:
+      context: .
       dockerfile: cmd/master/Dockerfile
-    restart: always
     ports:
       - 1337:1337
     env_file:
