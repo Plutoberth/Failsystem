@@ -95,7 +95,8 @@ func NewServer(port uint, folderPath string, quota int64, masterAddress string) 
 }
 
 func (s *server) Serve() error {
-	lis, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", s.port))
+	address := fmt.Sprintf("0.0.0.0:%v", s.port)
+	lis, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
 	}
@@ -104,6 +105,7 @@ func (s *server) Serve() error {
 	pb.RegisterMinionServer(s.server, s)
 	pb.RegisterMasterToMinionServer(s.server, s)
 
+	fmt.Println("Minion is running at: ", address)
 	go s.heartbeatLoop()
 	err = s.server.Serve(lis)
 
