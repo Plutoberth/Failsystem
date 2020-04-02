@@ -3,6 +3,7 @@ package master
 import (
 	"context"
 	"fmt"
+	"github.com/plutoberth/Failsystem/core/minion"
 	pb "github.com/plutoberth/Failsystem/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -61,7 +62,7 @@ const (
 	serverCollection = "servers"
 	fileCollection   = "files"
 	expiryIndex      = "expiryIndex"
-	serverTTL        = 30
+	serverTTL        = minion.HeartbeatInterval * 3
 )
 
 func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
@@ -84,7 +85,7 @@ func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
 	_, _ = database.Collection(serverCollection).Indexes().DropOne(ctx, expiryIndex, options.DropIndexes())
 	_, err = database.Collection(serverCollection).Indexes().CreateOne(ctx,
 		mongo.IndexModel{Keys: bson.M{"LastUpdate": 1},
-			Options: options.Index().SetExpireAfterSeconds(serverTTL).SetName(expiryIndex)},
+			Options: options.Index().SetExpireAfterSeconds(int32(serverTTL.Seconds())).SetName(expiryIndex)},
 		options.CreateIndexes())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index: %v", err)

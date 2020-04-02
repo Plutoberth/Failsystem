@@ -51,7 +51,7 @@ const (
 	maxPort           uint   = 2 << 16 // 65536
 	delayTime                = time.Second * 10
 	uuidFile                 = "uuid"
-	HeartbeatInterval        = time.Second * 4
+	HeartbeatInterval        = time.Second * 45
 )
 
 //NewServer - Initializes a new minion server.
@@ -171,7 +171,7 @@ func (s *server) heartbeatLoop() {
 			log.Printf("CRITICAL: Failed to connect to the master (%v): %v", s.masterAddress, err)
 			continue
 		}
-		if err = mtmClient.Heartbeat(context.Background(), &pb.Heartbeat{
+		if err = mtmClient.Heartbeat(ctx, &pb.Heartbeat{
 			UUID:           s.uuid,
 			AvailableSpace: s.folder.GetRemainingSpace(),
 			Port:           int32(s.port),
