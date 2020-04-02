@@ -11,7 +11,7 @@ var port = flag.Uint("port", 1337, "The Server's port.")
 
 func main() {
 	flag.Parse()
-	mongoDal, err := master.NewMongoDatastore(context.Background(), "192.168.99.100:27017")
+	mongoDal, err := master.NewMongoDatastore(context.Background(), "mongo:27017")
 	if err != nil {
 		log.Fatalf("Failed to connect to MongoDB: %v", err)
 	}

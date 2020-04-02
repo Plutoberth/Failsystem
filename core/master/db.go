@@ -67,7 +67,7 @@ const (
 
 func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
 	clientOptions := options.Client().ApplyURI(fmt.Sprintf("mongodb://%s", address)).
-		SetAuth(options.Credential{Username: "root", Password: "example"})
+		SetAuth(options.Credential{Username: "root", Password: "failnet"})
 
 	// Connect to MongoDB
 	client, err := mongo.Connect(ctx, clientOptions)
