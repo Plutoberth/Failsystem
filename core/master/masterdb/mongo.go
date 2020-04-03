@@ -1,4 +1,4 @@
-package master
+package masterdb
 
 import (
 	"context"
@@ -11,48 +11,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"os"
 	"time"
-)
-
-type Datastore interface {
-	//LastUpdate shall be automatically updated.
-	UpdateServerEntry(ctx context.Context, entry ServerEntry) error
-	GetServerEntry(ctx context.Context, UUID string) (*ServerEntry, error)
-	GetServersWithEnoughSpace(ctx context.Context, requestedSize int64) ([]ServerEntry, error)
-
-	CreateFileEntry(ctx context.Context, entry FileEntry) error
-	UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error
-	FinalizeFileEntry(ctx context.Context, fileUUID string, hash pb.DataHash) error
-	GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error)
-}
-
-type ServerEntry struct {
-	UUID           string    `bson:"_id"`
-	Ip             string    `bson:"Ip"`
-	AvailableSpace int64     `bson:"AvailableSpace"`
-	LastUpdate     time.Time `bson:"LastUpdate"`
-}
-
-type FileEntry struct {
-	UUID        string      `bson:"_id"`
-	Name        string      `bson:"Name"`
-	Size        int64       `bson:"Size"`
-	ServerUUIDs []string    `bson:"ServerUUIDs"`
-	Available   bool        `bson:"Available"`
-	Hash        pb.DataHash `bson:"Hash"`
-}
-
-type Lease struct {
-	FileUUID  string `bson:"_id"`
-	GrantedTo string `bson:"GrantedTo"`
-}
-
-type Operation int
-
-const (
-	Upload      Operation = 1
-	Download    Operation = 2
-	Delete      Operation = 3
-	Replication Operation = 4
 )
 
 type mongoDataStore struct {
@@ -71,7 +29,7 @@ func getEnvs() (username string, password string, err error) {
 	username = os.Getenv("MONGO_INITDB_ROOT_USERNAME")
 	password = os.Getenv("MONGO_INITDB_ROOT_PASSWORD")
 	if username == "" || password == "" {
-		return "", "", errors.New("MONGO_INITDB_ROOT_USERNAME and MONGO_INITDB_ROOT_PASSWORD must be set.")
+		return "", "", errors.New("MONGO_INITDB_ROOT_USERNAME and MONGO_INITDB_ROOT_PASSWORD must be set")
 	}
 	return username, password, nil
 }
@@ -108,8 +66,6 @@ func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
 
 	return &mongoDataStore{database}, nil
 }
-
-//TODO:Fix contexts
 
 func (m *mongoDataStore) UpdateServerEntry(ctx context.Context, entry ServerEntry) error {
 	entry.LastUpdate = time.Now()
@@ -182,7 +138,7 @@ func (m *mongoDataStore) UpdateFileHosts(ctx context.Context, fileUUID string, s
 }
 
 func (m *mongoDataStore) GetServersWithEnoughSpace(ctx context.Context, requestedSize int64) ([]ServerEntry, error) {
-	var results = make([]ServerEntry, 0, replicationFactor*2)
+	var results = make([]ServerEntry, 0)
 	cursor, err := m.db.Collection(serverCollection).Find(ctx, bson.M{"AvailableSpace": bson.M{"$gt": requestedSize}}, options.Find())
 	if err != nil {
 		return nil, fmt.Errorf("find available servers failed: %v", err)

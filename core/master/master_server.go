@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/plutoberth/Failsystem/core/master/masterdb"
 	"github.com/plutoberth/Failsystem/core/minion/internal_minion"
 	pb "github.com/plutoberth/Failsystem/model"
 	"google.golang.org/grpc"
@@ -27,7 +28,7 @@ type server struct {
 	pb.UnimplementedMinionToMasterServer
 	port   uint
 	server *grpc.Server
-	db     Datastore
+	db     masterdb.Datastore
 }
 
 const (
@@ -39,7 +40,7 @@ var UpdateDbFailed = status.Errorf(codes.Internal, "Failed to update database")
 var AccessDbFailed = status.Errorf(codes.Internal, "Failed to access database")
 
 //NewServer - Initializes a new master Server.
-func NewServer(port uint, db Datastore) (Server, error) {
+func NewServer(port uint, db masterdb.Datastore) (Server, error) {
 	s := new(server)
 	if port >= maxPort {
 		return nil, fmt.Errorf("port must be between 0 and %v", maxPort)
@@ -72,15 +73,15 @@ func (s *server) Close() {
 	}
 }
 
-func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, size int64, fileUUID string) (empoweredServer *ServerEntry, allocatedServers []ServerEntry, err error) {
+func (s *server) allocateAndEmpower(ctx context.Context, servers []masterdb.ServerEntry, size int64, fileUUID string) (empoweredServer *masterdb.ServerEntry, allocatedServers []masterdb.ServerEntry, err error) {
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(servers), func(i, j int) { servers[i], servers[j] = servers[j], servers[i] })
-	allocatedServers = make([]ServerEntry, 0, replicationFactor)
+	allocatedServers = make([]masterdb.ServerEntry, 0, replicationFactor)
 
 	//TODO: Separate into functions
 	//TODO: Improve concurrency
 	//This section could heavily benefit from connecting to the servers and allocating concurrently.
-	//Doing this properly, especially with db updates, is extremely difficult, so it will be kept for a future version.
+	//Doing this properly, especially with masterdb updates, is extremely difficult, so it will be kept for a future version.
 	for _, server := range servers {
 		c, err := internal_minion.NewClient(ctx, server.Ip)
 		if err != nil {
@@ -99,7 +100,7 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []ServerEntry, 
 		}
 		server.AvailableSpace = resp.GetAvailableSpace()
 		if err := s.db.UpdateServerEntry(ctx, server); err != nil {
-			log.Println("Failed to update db on initiate upload: ", err.Error())
+			log.Println("Failed to update masterdb on initiate upload: ", err.Error())
 			return nil, nil, UpdateDbFailed
 		}
 
@@ -173,14 +174,14 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 		serverUUIDs = append(serverUUIDs, server.UUID)
 	}
 
-	if err := s.db.CreateFileEntry(ctx, FileEntry{
+	if err := s.db.CreateFileEntry(ctx, masterdb.FileEntry{
 		UUID:        fileuuid,
 		Name:        in.GetFileName(),
 		Size:        in.GetFileSize(),
 		ServerUUIDs: serverUUIDs,
 		Available:   false,
 	}); err != nil {
-		log.Printf("Failed to create file entry on db: %v", err)
+		log.Printf("Failed to create file entry on masterdb: %v", err)
 		return nil, UpdateDbFailed
 	}
 
@@ -197,7 +198,7 @@ func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (
 	}
 	file, err := s.db.GetFileEntry(ctx, fileUUID)
 	if err != nil {
-		log.Printf("Failed to access db on InitiateFileRead: %v", err)
+		log.Printf("Failed to access masterdb on InitiateFileRead: %v", err)
 		return nil, AccessDbFailed
 	}
 	return &pb.FileReadResponse{
@@ -212,13 +213,13 @@ func (s *server) updateServerDetails(ctx context.Context, UUID string, available
 		return status.Errorf(codes.Internal, "Couldn't fetch IP address for peer")
 	}
 
-	err := s.db.UpdateServerEntry(ctx, ServerEntry{
+	err := s.db.UpdateServerEntry(ctx, masterdb.ServerEntry{
 		UUID:           UUID,
 		Ip:             fmt.Sprintf("%s:%d", caller.Addr.(*net.TCPAddr).IP.String(), port),
 		AvailableSpace: availableSpace,
 	})
 	if err != nil {
-		log.Printf("Failed when writing heartbeat to db: %v", err)
+		log.Printf("Failed when writing heartbeat to masterdb: %v", err)
 		return UpdateDbFailed
 	}
 	return nil

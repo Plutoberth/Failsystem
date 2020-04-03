@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"github.com/plutoberth/Failsystem/core/master"
+	"github.com/plutoberth/Failsystem/core/master/masterdb"
 	"log"
 )
 
@@ -11,7 +12,7 @@ var port = flag.Uint("port", 1337, "The Server's port.")
 
 func main() {
 	flag.Parse()
-	mongoDal, err := master.NewMongoDatastore(context.Background(), "mongo:27017")
+	mongoDal, err := masterdb.NewMongoDatastore(context.Background(), "mongo:27017")
 	if err != nil {
 		log.Fatalf("Failed to connect to MongoDB: %v", err)
 	}
