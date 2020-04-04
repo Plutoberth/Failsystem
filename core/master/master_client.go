@@ -11,6 +11,7 @@ import (
 type Client interface {
 	InitiateFileUpload(ctx context.Context, req *pb.FileUploadRequest) (*pb.FileUploadResponse, error)
 	InitiateFileRead(ctx context.Context, req *pb.FileReadRequest) (*pb.FileReadResponse, error)
+	ListFiles(ctx context.Context, in *pb.ListFilesRequest) (*pb.ListFilesResponse, error)
 	Close() error
 }
 
@@ -18,6 +19,7 @@ type client struct {
 	conn   *grpc.ClientConn
 	client pb.MasterClient
 }
+
 
 //NewClient - Returns a Client struct initialized with the string.
 func NewClient(address string) (Client, error) {
@@ -48,4 +50,8 @@ func (c *client) InitiateFileUpload(ctx context.Context, req *pb.FileUploadReque
 
 func (c *client) InitiateFileRead(ctx context.Context, req *pb.FileReadRequest) (*pb.FileReadResponse, error) {
 	return c.client.InitiateFileRead(ctx, req)
+}
+
+func (c *client) ListFiles(ctx context.Context, req *pb.ListFilesRequest) (*pb.ListFilesResponse, error) {
+	return c.client.ListFiles(ctx, req)
 }

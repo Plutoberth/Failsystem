@@ -247,3 +247,21 @@ func (s *server) FinalizeUpload(ctx context.Context, in *pb.FinalizeUploadReques
 	}
 	return &pb.FinalizeUploadResponse{}, nil
 }
+
+func (s *server) ListFiles(ctx context.Context, req *pb.ListFilesRequest) (*pb.ListFilesResponse, error) {
+	files, err := s.db.ListFiles(ctx)
+	if err != nil {
+		return nil, AccessDbFailed
+	}
+	respArr := make([]*pb.MasterFileEntry, 0, len(files))
+	for _, file := range files {
+		respArr = append(respArr, &pb.MasterFileEntry{
+			UUID:                 file.UUID,
+			Name:                 file.Name,
+			Size:                 file.Size,
+		})
+	}
+	return &pb.ListFilesResponse{
+		Entries:              respArr,
+	}, nil
+}

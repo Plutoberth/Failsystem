@@ -11,11 +11,11 @@ type Datastore interface {
 	UpdateServerEntry(ctx context.Context, entry ServerEntry) error
 	GetServerEntry(ctx context.Context, UUID string) (*ServerEntry, error)
 	GetServersWithEnoughSpace(ctx context.Context, requestedSize int64) ([]ServerEntry, error)
-
 	CreateFileEntry(ctx context.Context, entry FileEntry) error
 	UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error
 	FinalizeFileEntry(ctx context.Context, fileUUID string, hash pb.DataHash) error
 	GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error)
+	ListFiles(ctx context.Context) ([]FileEntry, error)
 }
 
 type ServerEntry struct {
@@ -34,16 +34,3 @@ type FileEntry struct {
 	Hash        pb.DataHash `bson:"Hash"`
 }
 
-type Lease struct {
-	FileUUID  string `bson:"_id"`
-	GrantedTo string `bson:"GrantedTo"`
-}
-
-type Operation int
-
-const (
-	Upload      Operation = 1
-	Download    Operation = 2
-	Delete      Operation = 3
-	Replication Operation = 4
-)

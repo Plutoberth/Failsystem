@@ -17,6 +17,8 @@ type mongoDataStore struct {
 	db *mongo.Database
 }
 
+
+
 const (
 	dbName           = "failsystemdb"
 	serverCollection = "servers"
@@ -124,6 +126,19 @@ func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEn
 		return nil, fmt.Errorf("find file failed: %v", err)
 	}
 	return res, nil
+}
+
+
+func (m *mongoDataStore) ListFiles(ctx context.Context) ([]FileEntry, error) {
+	var results = make([]FileEntry, 0)
+	cursor, err := m.db.Collection(fileCollection).Find(ctx, bson.M{"Available": bson.M{"$eq": true}}, options.Find())
+	if err != nil {
+		return nil, fmt.Errorf("list files failed: %v", err)
+	}
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, fmt.Errorf("decoding listed files failed: %v", err)
+	}
+	return results, nil
 }
 
 func (m *mongoDataStore) UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error {

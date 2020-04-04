@@ -8,10 +8,11 @@ package model;
 service Master {
     rpc InitiateFileUpload (FileUploadRequest) returns (FileUploadResponse);
     rpc InitiateFileRead (FileReadRequest) returns (FileReadResponse);
+    rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
 }
 
 //This service is meant for (Client || Minion) --> Minion communication.
-//i.e. Internally, the minion should detect whether this is as a part of an empowerment or
+//i.e. Internally, the minion should detect whether this is as a part of an empowerment or a regular upload.
 service Minion {
     rpc UploadFile (stream UploadRequest) returns (DataHash);
     rpc DownloadFile (DownloadRequest) returns (stream FileChunk);
@@ -136,3 +137,15 @@ message FinalizeUploadRequest {
 }
 
 message FinalizeUploadResponse {}
+
+message ListFilesRequest {}
+
+message MasterFileEntry {
+    string UUID = 1;
+    string Name = 2;
+    int64 Size = 3;
+}
+
+message ListFilesResponse {
+    repeated MasterFileEntry entries = 1;
+}
