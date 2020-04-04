@@ -8,6 +8,7 @@ package model;
 service Master {
     rpc InitiateFileUpload (FileUploadRequest) returns (FileUploadResponse);
     rpc InitiateFileRead (FileReadRequest) returns (FileReadResponse);
+    rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
 }
 
 //This service is meant for (Client || Minion) --> Minion communication.
@@ -136,3 +137,15 @@ message FinalizeUploadRequest {
 }
 
 message FinalizeUploadResponse {}
+
+message ListFilesRequest {}
+
+message MasterFileEntry {
+    string UUID = 1;
+    string Name = 2;
+    string Size = 3;
+}
+
+message ListFilesResponse {
+    repeated MasterFileEntry entries = 1;
+}
