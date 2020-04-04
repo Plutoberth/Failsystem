@@ -129,7 +129,7 @@ func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEn
 }
 
 
-func (m *mongoDataStore) ListFiles(ctx context.Context, UUID string) ([]FileEntry, error) {
+func (m *mongoDataStore) ListFiles(ctx context.Context) ([]FileEntry, error) {
 	var results = make([]FileEntry, 0)
 	cursor, err := m.db.Collection(fileCollection).Find(ctx, bson.M{"Available": bson.M{"$eq": true}}, options.Find())
 	if err != nil {

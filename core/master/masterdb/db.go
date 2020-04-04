@@ -15,7 +15,7 @@ type Datastore interface {
 	UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error
 	FinalizeFileEntry(ctx context.Context, fileUUID string, hash pb.DataHash) error
 	GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error)
-	ListFiles(ctx context.Context, UUID string) ([]FileEntry, error)
+	ListFiles(ctx context.Context) ([]FileEntry, error)
 }
 
 type ServerEntry struct {

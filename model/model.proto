@@ -143,7 +143,7 @@ message ListFilesRequest {}
 message MasterFileEntry {
     string UUID = 1;
     string Name = 2;
-    string Size = 3;
+    int64 Size = 3;
 }
 
 message ListFilesResponse {
