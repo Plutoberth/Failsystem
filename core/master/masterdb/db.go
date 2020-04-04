@@ -34,16 +34,3 @@ type FileEntry struct {
 	Hash        pb.DataHash `bson:"Hash"`
 }
 
-type Lease struct {
-	FileUUID  string `bson:"_id"`
-	GrantedTo string `bson:"GrantedTo"`
-}
-
-type Operation int
-
-const (
-	Upload      Operation = 1
-	Download    Operation = 2
-	Delete      Operation = 3
-	Replication Operation = 4
-)
