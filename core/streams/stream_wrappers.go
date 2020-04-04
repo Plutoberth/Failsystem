@@ -2,6 +2,7 @@ package streams
 
 import (
 	"errors"
+	"io"
 
 	pb "github.com/plutoberth/Failsystem/model"
 )
@@ -11,16 +12,12 @@ type FileChunkSender interface {
 	Send(*pb.FileChunk) error
 }
 
-//FileChunkSenderWrapper exposes an io.Writer wrapper for sending files to the client
-type FileChunkSenderWrapper interface {
-	Write(p []byte) (n int, err error)
-}
-
 type fileChunkSenderWrapper struct {
 	stream FileChunkSender
 }
 
-func NewFileChunkSenderWrapper(Stream FileChunkSender) FileChunkSenderWrapper {
+//NewFileChunkSenderWrapper exposes an io.Writer wrapper for sending files to the client
+func NewFileChunkSenderWrapper(Stream FileChunkSender) io.Writer {
 	s := new(fileChunkSenderWrapper)
 	s.stream = Stream
 
