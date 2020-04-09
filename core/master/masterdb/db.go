@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+//Datastore defines the database interface for the master.
 type Datastore interface {
 	//LastUpdate shall be automatically updated.
 	UpdateServerEntry(ctx context.Context, entry ServerEntry) error
@@ -33,4 +34,3 @@ type FileEntry struct {
 	Available   bool        `bson:"Available"`
 	Hash        pb.DataHash `bson:"Hash"`
 }
-

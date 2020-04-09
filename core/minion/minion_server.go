@@ -238,7 +238,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	)
 
 	if req, err := stream.Recv(); err != nil {
-		log.Printf("Error receving in UploadFile: %v", err.Error())
+		log.Printf("Error receiving in UploadFile: %v", err.Error())
 		return status.Errorf(codes.Internal, "Failed while receiving from stream")
 	} else {
 		switch data := req.GetData().(type) {
@@ -301,7 +301,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 				return status.Errorf(codes.Internal, "Unable to write to file")
 			}
 		default:
-			log.Printf("Error when type switching on Server UploadFile, swithced on unexpected type. Value: %v", req.GetData())
+			log.Printf("Error when type switching on Server UploadFile, switched on unexpected type. Value: %v", req.GetData())
 			return status.Errorf(codes.InvalidArgument, "Unrecognized request data type")
 		}
 	}

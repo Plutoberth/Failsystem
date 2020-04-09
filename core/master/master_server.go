@@ -256,12 +256,12 @@ func (s *server) ListFiles(ctx context.Context, req *pb.ListFilesRequest) (*pb.L
 	respArr := make([]*pb.MasterFileEntry, 0, len(files))
 	for _, file := range files {
 		respArr = append(respArr, &pb.MasterFileEntry{
-			UUID:                 file.UUID,
-			Name:                 file.Name,
-			Size:                 file.Size,
+			UUID: file.UUID,
+			Name: file.Name,
+			Size: file.Size,
 		})
 	}
 	return &pb.ListFilesResponse{
-		Entries:              respArr,
+		Entries: respArr,
 	}, nil
 }

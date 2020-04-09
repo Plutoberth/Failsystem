@@ -20,7 +20,6 @@ type client struct {
 	client pb.MasterClient
 }
 
-
 //NewClient - Returns a Client struct initialized with the string.
 func NewClient(address string) (Client, error) {
 	c := new(client)

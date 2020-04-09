@@ -17,8 +17,6 @@ type mongoDataStore struct {
 	db *mongo.Database
 }
 
-
-
 const (
 	dbName           = "failsystemdb"
 	serverCollection = "servers"
@@ -127,7 +125,6 @@ func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEn
 	}
 	return res, nil
 }
-
 
 func (m *mongoDataStore) ListFiles(ctx context.Context) ([]FileEntry, error) {
 	var results = make([]FileEntry, 0)
