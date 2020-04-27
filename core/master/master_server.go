@@ -24,6 +24,7 @@ type Server interface {
 }
 
 type server struct {
+	//these structs automatically implement new methods with dummy ones
 	pb.UnimplementedMasterServer
 	pb.UnimplementedMinionToMasterServer
 	port   uint
@@ -82,6 +83,8 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []masterdb.Serv
 	//TODO: Improve concurrency
 	//This section could heavily benefit from connecting to the servers and allocating concurrently.
 	//Doing this properly, especially with masterdb updates, is extremely difficult, so it will be kept for a future version.
+	//Iterate over the servers, connecting to each one and making an allocation. If we finished allocating data, try to
+	//empower the last server.
 	for _, server := range servers {
 		c, err := internal_minion.NewClient(ctx, server.Ip)
 		if err != nil {
@@ -113,6 +116,7 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []masterdb.Serv
 		//If we already have enough servers, try to empower the last one
 		if len(allocatedServers) == replicationFactor {
 			serverIps := make([]string, 0, replicationFactor-1)
+			//Append all previous server ips for the empowered server
 			for _, server := range allocatedServers[:replicationFactor-1] {
 				serverIps = append(serverIps, server.Ip)
 			}
@@ -125,13 +129,14 @@ func (s *server) allocateAndEmpower(ctx context.Context, servers []masterdb.Serv
 			} else {
 				log.Printf("Error when empowering: %v", err)
 				_ = c.Close()
-				//Return the allocated server and exit the for loop
+				//Exit early and return the allocated server and exit the for loop
 				return &server, allocatedServers, nil
 			}
 		}
 
 		_ = c.Close()
 	}
+
 	return nil, nil, status.Errorf(codes.ResourceExhausted,
 		"couldn't find enough servers, only %d/%d available", len(allocatedServers), replicationFactor)
 }
@@ -164,6 +169,7 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 	}
 	fileuuid := newuuid.String()
 
+	//Allocate space on servers and empower one of them
 	empoweredServer, allocatedServers, err := s.allocateAndEmpower(ctx, servers, in.GetFileSize(), fileuuid)
 	if err != nil {
 		return nil, err
@@ -174,6 +180,7 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 		serverUUIDs = append(serverUUIDs, server.UUID)
 	}
 
+	//Create a file entry in the db for book-keeping.
 	if err := s.db.CreateFileEntry(ctx, masterdb.FileEntry{
 		UUID:        fileuuid,
 		Name:        in.GetFileName(),
@@ -201,12 +208,15 @@ func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (
 		log.Printf("Failed to access masterdb on InitiateFileRead: %v", err)
 		return nil, AccessDbFailed
 	}
+
+	//Simply get one of the alive servers that hold the file, and return it as a server to read from.
 	return &pb.FileReadResponse{
 		MinionServerIp: file.ServerUUIDs[rand.Intn(len(file.ServerUUIDs))],
 		Hash:           &file.Hash,
 	}, nil
 }
 
+//A unified function to update the details in the database about a server.
 func (s *server) updateServerDetails(ctx context.Context, UUID string, availableSpace int64, port int32) error {
 	caller, ok := peer.FromContext(ctx)
 	if !ok {
@@ -226,6 +236,7 @@ func (s *server) updateServerDetails(ctx context.Context, UUID string, available
 }
 
 func (s *server) Announce(ctx context.Context, in *pb.Announcement) (*pb.AnnounceResponse, error) {
+	//UpdateFileHosts for all files, then update the rest of its details
 	if in.GetEntries() != nil {
 		for _, file := range in.GetEntries() {
 			if err := s.db.UpdateFileHosts(ctx, file.GetUUID(), in.GetUUID()); err != nil {

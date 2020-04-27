@@ -48,9 +48,9 @@ type ManagedFolder interface {
 
 	//Receive a non thread-safe io.WriteCloser for the specified UUID.
 	//This operation will succeed only if there is an unused allocation for the specified UUID.
-	//The returned io.WriteCloser will fail (and delete the file) if bytesWritten != bytesAllocated. It may fail
-	//when writing (for writing too much) or when closing the file (for writing too little). This way, the caller
-	//may terminate the write and free resources if it unexpectedly runs out of data.
+	//The returned io.WriteCloser will fail (and delete the file) if bytesWritten != bytesAllocated when calling close.
+	//Calling Write with a buffer that will cause the file to exceed the maximum size will fail and be a no-op.
+	//The caller may terminate the write using Close() and free resources if it unexpectedly runs out of data.
 	//Using ReadFile on the UUID is only valid after the returned io.WriteCloser has been closed.
 	WriteToFile(UUID string) (io.WriteCloser, error)
 
@@ -106,7 +106,7 @@ func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 	if stat, err := os.Stat(folderPath); os.IsNotExist(err) {
 		//Create all dirs required for the operation
 		if err := os.MkdirAll(filepath.Join(folderPath, transfersDataFolder), dataFolderPerms); err != nil {
-			log.Printf("Couldn't create dir for \"%v\"", err)
+			log.Printf("Couldn't create dir: %v", err)
 			return nil, fmt.Errorf("couldn't create data folder: %w", err)
 		}
 	} else {
@@ -132,7 +132,7 @@ func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 				return nil, err
 			}
 			if err = os.Mkdir(transferPath, dataFolderPerms); err != nil {
-				log.Printf("Couldn't create dir for \"%v\"", err)
+				log.Printf("Couldn't create dir: %v", err)
 				return nil, fmt.Errorf("couldn't create transfers folder: %w", err)
 			}
 		}
@@ -206,8 +206,9 @@ func (m *managedFolder) AllocateSpace(ctx context.Context, UUID string, allocSiz
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	//Check if there's an allocation
 	if _, ok := (*m.allocs)[UUID]; ok {
-		return false, fmt.Errorf("Tried to reallocate an existing allocation")
+		return false, fmt.Errorf("tried to reallocate an existing allocation")
 	}
 
 	m.usedAllocationBytes += entry.size
@@ -233,6 +234,7 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
+	//Try to find an allocation
 	entry, ok := (*m.allocs)[UUID]
 	if !ok {
 		return nil, fmt.Errorf("%v not found in allocations", UUID)
@@ -250,7 +252,7 @@ func (m *managedFolder) WriteToFile(UUID string) (io.WriteCloser, error) {
 	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
 		//Create dir
 		if err := os.MkdirAll(folderPath, dataFolderPerms); err != nil {
-			log.Printf("Couldn't create dir for \"%v\"", err)
+			log.Printf("Couldn't create dir: %v", err)
 			return nil, fmt.Errorf("couldn't create transfers folder: %w", err)
 		}
 	}
@@ -278,6 +280,7 @@ func (m *managedFolder) freeAllocation(entry allocationEntry) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	if _, ok := (*m.allocs)[entry.UUID]; ok {
+		//Free the allocation and delete it from the dictionary
 		m.usedAllocationBytes -= entry.size
 		delete(*m.allocs, entry.UUID)
 		return nil
@@ -307,12 +310,14 @@ func (m *managedFolder) waitForCancellation(ctx context.Context, entry allocatio
 
 func (m *managedFolder) ListFiles() ([]os.FileInfo, error) {
 	var files []os.FileInfo
+	//Simply use the filesystem to list the files
 	entries, err := ioutil.ReadDir(m.folderPath)
 	files = make([]os.FileInfo, 0, len(entries))
 	if err != nil {
 		return nil, err
 	}
 	for _, entry := range entries {
+		//if the file is not the sentinel
 		if !entry.IsDir() && entry.Name() != managedFolderSentinel {
 			files = append(files, entry)
 		}

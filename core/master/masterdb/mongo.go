@@ -2,13 +2,13 @@ package masterdb
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/plutoberth/Failsystem/core/minion"
 	pb "github.com/plutoberth/Failsystem/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"log"
 	"os"
 	"time"
 )
@@ -23,22 +23,24 @@ const (
 	fileCollection   = "files"
 	expiryIndex      = "expiryIndex"
 	serverTTL        = minion.HeartbeatInterval * 3
+	defaultUser      = "failnet"
+	defaultPassword  = "failnet"
 )
 
-func getEnvs() (username string, password string, err error) {
+func getEnvs() (username string, password string) {
 	username = os.Getenv("MONGO_INITDB_ROOT_USERNAME")
 	password = os.Getenv("MONGO_INITDB_ROOT_PASSWORD")
+	//If the contents were not found, we're probably running in a debug env.
 	if username == "" || password == "" {
-		return "", "", errors.New("MONGO_INITDB_ROOT_USERNAME and MONGO_INITDB_ROOT_PASSWORD must be set")
+		log.Printf("Didn't find Mongo credentials in MONGO_INITDB_ROOT_USERNAME and MONGO_INITDB_ROOT_PASSWORD, using defaults")
+		return defaultUser, defaultPassword
 	}
-	return username, password, nil
+	return username, password
 }
 
 func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
-	username, password, err := getEnvs()
-	if err != nil {
-		return nil, err
-	}
+	username, password := getEnvs()
+	//Configure username and password
 	clientOptions := options.Client().ApplyURI(fmt.Sprintf("mongodb://%s", address)).
 		SetAuth(options.Credential{Username: username, Password: password})
 
@@ -51,10 +53,13 @@ func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
 	// Check the connection
 	err = client.Ping(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to ping: %w", err)
+		return nil, fmt.Errorf("failed to ping mongodb: %w", err)
 	}
 
+	//Open the failnet database within the server
 	database := client.Database(dbName)
+
+	//Reconstruct the automatic dead server expiration index
 	_, _ = database.Collection(serverCollection).Indexes().DropOne(ctx, expiryIndex, options.DropIndexes())
 	_, err = database.Collection(serverCollection).Indexes().CreateOne(ctx,
 		mongo.IndexModel{Keys: bson.M{"LastUpdate": 1},
@@ -116,7 +121,10 @@ func (m *mongoDataStore) FinalizeFileEntry(ctx context.Context, fileUUID string,
 
 func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEntry, error) {
 	var res = new(FileEntry)
-	findResult := m.db.Collection(fileCollection).FindOne(ctx, bson.M{"_id": UUID}, options.FindOne())
+	//Get a file with that UUID, only if it's available.
+	findResult := m.db.Collection(fileCollection).FindOne(ctx,
+		bson.M{"_id": UUID, "Available": bson.M{"$eq": true}},
+		options.FindOne())
 	if findResult.Err() != nil {
 		return nil, fmt.Errorf("find file failed: %v", findResult.Err())
 	}
@@ -128,10 +136,12 @@ func (m *mongoDataStore) GetFileEntry(ctx context.Context, UUID string) (*FileEn
 
 func (m *mongoDataStore) ListFiles(ctx context.Context) ([]FileEntry, error) {
 	var results = make([]FileEntry, 0)
+	//Get all files that are available
 	cursor, err := m.db.Collection(fileCollection).Find(ctx, bson.M{"Available": bson.M{"$eq": true}}, options.Find())
 	if err != nil {
 		return nil, fmt.Errorf("list files failed: %v", err)
 	}
+	//Try to decode into the array
 	if err := cursor.All(ctx, &results); err != nil {
 		return nil, fmt.Errorf("decoding listed files failed: %v", err)
 	}
@@ -139,6 +149,8 @@ func (m *mongoDataStore) ListFiles(ctx context.Context) ([]FileEntry, error) {
 }
 
 func (m *mongoDataStore) UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error {
+	//Add the new file host to a the set of hosts. As per the set data structure, if it is already there, it will not
+	//be added again.
 	_, err := m.db.Collection(fileCollection).UpdateOne(ctx, bson.M{"_id": fileUUID},
 		bson.M{"$addToSet": bson.M{"ServerUUIDs": serverUUID}}, options.Update())
 	if err != nil {
@@ -151,6 +163,7 @@ func (m *mongoDataStore) UpdateFileHosts(ctx context.Context, fileUUID string, s
 
 func (m *mongoDataStore) GetServersWithEnoughSpace(ctx context.Context, requestedSize int64) ([]ServerEntry, error) {
 	var results = make([]ServerEntry, 0)
+	//Find all servers whose available space is greater than the requested size.
 	cursor, err := m.db.Collection(serverCollection).Find(ctx, bson.M{"AvailableSpace": bson.M{"$gt": requestedSize}}, options.Find())
 	if err != nil {
 		return nil, fmt.Errorf("find available servers failed: %v", err)

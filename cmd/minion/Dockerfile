@@ -4,7 +4,7 @@ WORKDIR /go/src/Failsystem
 COPY . .
 
 RUN go mod download
-RUN go install -v ./cmd/minion/
+RUN go install ./cmd/minion/
 
 # Distroless would be better, but there are some bugs with it currently
 FROM alpine

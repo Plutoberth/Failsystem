@@ -16,6 +16,7 @@ const testFolder = "./testFolder"
 const fileSize = 100
 const quota = 1000
 
+//A tiny helper function to get random data
 func getRandomData(size int) []byte {
 	data := make([]byte, size)
 	rand.Read(data)
@@ -23,6 +24,7 @@ func getRandomData(size int) []byte {
 }
 
 func getUUID() string {
+	//Version 1 UUID
 	id, err := uuid.NewUUID()
 	if err != nil {
 		log.Fatalf("Failed to generate UUID: %v", err)
@@ -82,6 +84,7 @@ func TestFolderClean(t *testing.T) {
 func TestFolderReuse(t *testing.T) {
 	_, err := NewManagedFolder(quota, "./")
 
+	//Should detect that the folder does not have the sentinel
 	if err == nil {
 		t.Fatal("Trying to create a folder for the current dir was successful, even though it contains code files.")
 	}
@@ -121,6 +124,7 @@ func TestFileLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	//We allocated space for 1*fileSize, so oversizedData should fail.
 	oversizedData := getRandomData(fileSize * 2)
 	undersizedData := getRandomData(fileSize * 0.5)
 
@@ -176,7 +180,7 @@ func TestQuotaLimits(t *testing.T) {
 
 	cancel()
 
-	//Give the goroutine some time to complete
+	//Give the goroutine some time to complete, as specified in the "implementation detail"
 	time.Sleep(time.Millisecond * 100)
 
 	//Should succeed after cancelling because the allocation was freed

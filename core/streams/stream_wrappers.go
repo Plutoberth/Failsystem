@@ -24,6 +24,7 @@ func NewFileChunkSenderWrapper(Stream FileChunkSender) io.Writer {
 	return s
 }
 
+//Implemented for the io.Writer interface, this allows to easily send bytes to the stream
 func (s *fileChunkSenderWrapper) Write(p []byte) (n int, err error) {
 	if s.stream == nil {
 		return 0, errors.New("wrapper must be initialized with stream")

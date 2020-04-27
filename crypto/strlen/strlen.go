@@ -24,6 +24,7 @@ func (f *strlenHash) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+//Sum is the hashing function for the hash.Hash interface.
 func (f *strlenHash) Sum(b []byte) []byte {
 	_, _ = f.Write(b)
 	sumHex := fmt.Sprintf("%x", f.sum)

@@ -4,7 +4,7 @@ WORKDIR /go/src/Failsystem
 COPY . .
 
 RUN go mod download
-RUN go install -v ./cmd/master/
+RUN go install ./cmd/master/
 
 FROM alpine
 

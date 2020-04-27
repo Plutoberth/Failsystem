@@ -36,9 +36,9 @@ func (m *managedFile) Close() error {
 	}
 
 	if m.bytesWritten != m.entry.size {
-		//Contract states that changes are not saved for
+		//The contract states that an unfulfilled quota will discard the file.
 		_ = os.Remove(m.filePath)
-		return fmt.Errorf("Size written != Size allocated: %v != %v", m.bytesWritten, m.entry.size)
+		return fmt.Errorf("size written != size allocated: %v != %v", m.bytesWritten, m.entry.size)
 	}
 
 	//Move file to storage folder (essentially its parent)

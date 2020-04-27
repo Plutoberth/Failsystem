@@ -130,6 +130,7 @@ message Heartbeat {
 
 message HeartBeatResponse {}
 
+//Post-upload about the file, to be stored in the master.
 message FinalizeUploadRequest {
     string serverUUID = 1;
     string fileUUID = 2;

@@ -29,6 +29,7 @@ type client struct {
 	client pb.MinionClient
 }
 
+//UploadManager provides
 type uploadManager struct {
 	hasher hash.Hash
 	stream pb.Minion_UploadFileClient
@@ -87,7 +88,8 @@ func (u *uploadManager) Close() error {
 		log.Printf("UploadFile hashing: %v != %v", hexHash, resp.GetHexHash())
 		return HashError
 	} else if resp.GetType() != pb.HashType_SHA256 {
-		log.Printf("UploadFile hashing: Requested check for type %v", resp.GetType().String())
+		//If the hash type isn't supported
+		log.Printf("Requested check for type %v", resp.GetType().String())
 		return errors.New("dev didn't properly support different hashes")
 	}
 
@@ -101,10 +103,12 @@ func (c *client) Upload(uuid string) (io.WriteCloser, error) {
 	}
 
 	if err = stream.Send(&pb.UploadRequest{Data: &pb.UploadRequest_UUID{UUID: uuid}}); err != nil {
-		stream.CloseSend()
+		//Not much to do after failing
+		_ = stream.CloseSend()
 		return nil, fmt.Errorf("failed when sending headers: %w", err)
 	}
 
+	//Return uploadManager, that satisfies io.WriteCloser to allow for simple writing.
 	return &uploadManager{
 		hasher: sha256.New(),
 		stream: stream,
@@ -132,6 +136,7 @@ func (c *client) UploadByFilename(filepath string, uuid string) (err error) {
 	return uploadWriter.Close()
 }
 
+//Download the file with the specified uuid to the local path
 func (c *client) DownloadFile(uuid string, targetFile string) (err error) {
 	var (
 		file *os.File
@@ -151,6 +156,7 @@ func (c *client) DownloadFile(uuid string, targetFile string) (err error) {
 		return fmt.Errorf("failed while sending download request: %w", err)
 	}
 
+	//Continuously receive content and write it
 	for {
 		req, err := stream.Recv()
 		if err != nil {

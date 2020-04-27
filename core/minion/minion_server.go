@@ -31,6 +31,7 @@ type Server interface {
 }
 
 type server struct {
+	//Implement new functions automatically for forwards compat
 	pb.UnimplementedMinionServer
 	pb.UnimplementedMasterToMinionServer
 	port          uint
@@ -39,6 +40,7 @@ type server struct {
 	server        *grpc.Server
 	masterAddress string
 
+	//Protects all fields below the mutex
 	mtx *sync.RWMutex
 
 	//The empowerments field represents a very low severity memory leak. The empowerment never expires, so the application
@@ -47,8 +49,8 @@ type server struct {
 }
 
 const (
-	defaultChunkSize  uint32 = 2 << 16
-	maxPort           uint   = 2 << 16 // 65536
+	defaultChunkSize  uint32 = 1 << 16
+	maxPort           uint   = 1 << 16 // 65536
 	delayTime                = time.Second * 10
 	uuidFile                 = "uuid"
 	HeartbeatInterval        = time.Second * 5
@@ -62,6 +64,7 @@ func NewServer(port uint, folderPath string, quota int64, masterAddress string) 
 	}
 	s.port = port
 
+	//Create a managed folder for file storage
 	folder, err := foldermgr.NewManagedFolder(quota, folderPath)
 	if err != nil {
 		return nil, err
@@ -72,6 +75,7 @@ func NewServer(port uint, folderPath string, quota int64, masterAddress string) 
 	s.empowerments = make(map[string][]string)
 	s.mtx = new(sync.RWMutex)
 
+	//Check if we have a saved UUID file for server identification
 	if readUuid, err := ioutil.ReadFile(uuidFile); err != nil {
 		if !os.IsNotExist(err) {
 			return nil, err
@@ -119,6 +123,8 @@ func (s *server) Close() {
 	}
 }
 
+//Announce our existence to the master.
+//This includes our UUID and the list of current files.
 func (s *server) announceToMaster() error {
 	var announcement = pb.Announcement{
 		UUID:           s.uuid,
@@ -155,6 +161,8 @@ func (s *server) announceToMaster() error {
 	return nil
 }
 
+//This loop notifies the master that we're still alive every so often. If we're not alive, the master can
+//remove us from its lists.
 func (s *server) heartbeatLoop() {
 	//Announce first
 	if err := s.announceToMaster(); err != nil {
@@ -183,7 +191,9 @@ func (s *server) heartbeatLoop() {
 	}
 }
 
-//Create the subordinate uploads
+//Create the subordinate uploads.
+//The system is designed so that the minion receives uploads from the users, and channels them to the replication
+//minions.
 func (s *server) createSubUploads(subs []string, uuid string) (subWriters []io.WriteCloser, minionClients []Client, err error) {
 	s.mtx.RLock()
 	s.mtx.RUnlock()
@@ -194,7 +204,7 @@ func (s *server) createSubUploads(subs []string, uuid string) (subWriters []io.W
 			minionClient, err := NewClient(sub)
 			minionClients[i] = minionClient
 			if err != nil {
-				log.Printf("Error when connecting to subordinate in UploadFile: %v", err)
+				log.Printf("Failed to connect to subordinate: %v", err)
 				return nil, nil, status.Errorf(codes.Internal, "Couldn't connect to minion server")
 			}
 
@@ -207,13 +217,14 @@ func (s *server) createSubUploads(subs []string, uuid string) (subWriters []io.W
 	return
 }
 
+//Finalizes the subuploads and verifies that their hashes match.
 func (s *server) finalizeSubUploads(subWriters []io.WriteCloser, clients []Client) error {
 	for _, subWriter := range subWriters {
 		if err := subWriter.Close(); err != nil {
 			if errors.Is(err, HashError) {
 				return status.Errorf(codes.DataLoss, "Data corrupted among servers")
 			} else {
-				log.Printf("finalizeSubUploads: Failed when closing Minion upload - %v", err)
+				log.Printf("Failed when closing Minion upload: %v", err)
 				return status.Errorf(codes.DataLoss, "Failed when finalizing replication")
 			}
 		}
@@ -221,13 +232,15 @@ func (s *server) finalizeSubUploads(subWriters []io.WriteCloser, clients []Clien
 
 	for _, client := range clients {
 		if err := client.Close(); err != nil {
-			log.Printf("finalizeSubUploads: Close client - %v", err)
+			log.Printf("Failed when closing the Minion client: %v", err)
 			return status.Errorf(codes.Internal, "Failed when finalizing replication")
 		}
 	}
 	return nil
 }
 
+//Uploads a file. This function automatically checks whether the upload is for a file for which this server is
+//empowered, and channels the upload if it is.
 func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	var (
 		file          io.WriteCloser
@@ -238,9 +251,10 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	)
 
 	if req, err := stream.Recv(); err != nil {
-		log.Printf("Error receiving in UploadFile: %v", err.Error())
+		log.Printf("Recv error: %v", err.Error())
 		return status.Errorf(codes.Internal, "Failed while receiving from stream")
 	} else {
+		//First upload request must be a UUID to mark the file.
 		switch data := req.GetData().(type) {
 		case *pb.UploadRequest_Chunk:
 			return status.Errorf(codes.InvalidArgument, "First upload request must be a UUID")
@@ -254,6 +268,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 				return status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 			}
 
+			//If we're empowered for that file, create the subuploads and remember it.
 			subIps, ok := s.empowerments[filename]
 			if ok {
 				subWriters, minionClients, err = s.createSubUploads(subIps, filename)
@@ -266,18 +281,20 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 		}
 	}
 
+	//Get a file handle to write to
 	if file, err = s.folder.WriteToFile(filename); err != nil {
 		log.Printf("Failed to open file, %v", err)
 		return status.Errorf(codes.Internal, "Couldn't open a file with that UUID")
 	}
 
 	hasher := sha256.New()
-	//Internally, only one multiwriter will be created, concatenating previous multiwriters.
+	//Internally, all multiwriters will be concatenated into a single multiwriter.
 	w := io.MultiWriter(hasher, file)
 	for _, subWriter := range subWriters {
 		w = io.MultiWriter(w, subWriter)
 	}
 
+	//Until the stream is over, receive all upload chunks and write them to the files simultaneously.
 	for {
 		req, err := stream.Recv()
 		if err != nil {
@@ -298,20 +315,23 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 			}
 
 			if _, err := w.Write(c); err != nil {
+				log.Printf("Failed to write to the multiwriter with error: %v", err)
 				return status.Errorf(codes.Internal, "Unable to write to file")
 			}
 		default:
-			log.Printf("Error when type switching on Server UploadFile, switched on unexpected type. Value: %v", req.GetData())
+			log.Printf("Error when type switching, switched on unexpected type. value: %v", req.GetData())
 			return status.Errorf(codes.InvalidArgument, "Unrecognized request data type")
 		}
 	}
 
-	if err := stream.SendAndClose(&pb.DataHash{Type: pb.HashType_SHA256, HexHash: hex.EncodeToString(hasher.Sum(nil))}); err != nil {
+	//get hash result
+	hash := &pb.DataHash{Type: pb.HashType_SHA256, HexHash: hex.EncodeToString(hasher.Sum(nil))}
+	if err := stream.SendAndClose(hash); err != nil {
 		return status.Errorf(codes.Internal, "Failed while sending response")
 	}
 
 	if err := file.Close(); err != nil {
-		log.Printf("UploadFile: Failed while closing the file - %v", err)
+		log.Printf("Failed while closing the file: %v", err)
 		return status.Error(codes.Internal, "Failed while closing the file")
 	}
 
@@ -321,10 +341,11 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 			return err
 		}
 
+		//Notify the master that the upload was successful
 		master, err := internal_master.NewClient(stream.Context(), s.masterAddress)
 		if err != nil {
-			log.Printf("UploadFile: Failed when dialing to master: %v", err)
-			return status.Errorf(codes.Internal, "Failed while finalizing upload on master")
+			log.Printf("Failed when dialing to master: %v", err)
+			return status.Errorf(codes.Internal, "Failed while finalizing upload")
 		}
 		defer master.Close()
 		if err := master.FinalizeUpload(stream.Context(), &pb.FinalizeUploadRequest{
@@ -347,10 +368,12 @@ func (s *server) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Download
 		return status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 	}
 
+	//Check if we have this file in store
 	if file, err = s.folder.ReadFile(req.GetUUID()); err != nil {
 		return status.Errorf(codes.NotFound, "File not present")
 	}
 
+	//Use the wrapper to send the files chunks directly using io.copy
 	chunkWriter := streams.NewFileChunkSenderWrapper(stream)
 	buf := make([]byte, defaultChunkSize)
 	bytesWritten, err := io.CopyBuffer(chunkWriter, file, buf)
@@ -364,6 +387,7 @@ func (s *server) Allocate(ctx context.Context, in *pb.AllocationRequest) (*pb.Al
 		return nil, status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
 	}
 
+	//Define ample delay for the automatic deletion, as a context
 	allocationContext, _ := context.WithTimeout(context.Background(), delayTime)
 	success, err := s.folder.AllocateSpace(allocationContext, in.GetUUID(), in.GetFileSize())
 	if err != nil {
@@ -399,6 +423,12 @@ func (s *server) Empower(ctx context.Context, in *pb.EmpowermentRequest) (*pb.Em
 	}
 
 	s.mtx.Lock()
+
+	//If it was already empowered for that UUID
+	if _, ok := s.empowerments[in.GetUUID()]; ok {
+		return nil, status.Errorf(codes.AlreadyExists, "this server is already empowered for this UUID")
+	}
+	//Add subordinates to empowerments list
 	s.empowerments[in.GetUUID()] = subs
 	s.mtx.Unlock()
 

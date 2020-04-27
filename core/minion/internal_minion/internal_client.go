@@ -23,6 +23,7 @@ type client struct {
 //NewClient - Returns a Client struct initialized with the string.
 func NewClient(ctx context.Context, address string) (Client, error) {
 	c := new(client)
+	//Dial with a context and save the connection
 	conn, err := grpc.DialContext(ctx, address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		return c, err

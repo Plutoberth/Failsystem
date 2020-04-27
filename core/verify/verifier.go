@@ -15,6 +15,7 @@ import (
 func VerifyDataHash(resp *pb.DataHash, file io.ReadSeeker) (bool, error) {
 	var hasher hash.Hash
 
+	//Find the appropriate hash function
 	switch resp.GetType() {
 
 	case pb.HashType_SHA1:
