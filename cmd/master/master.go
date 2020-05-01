@@ -16,7 +16,7 @@ import (
 var port = flag.Uint("port", 1337, "The Server's port.")
 
 var names = []string{"Correct", "Horse", "Battery", "Staple", "Dog", "Monkey", "Zoo", "Iron", "Rust", "Gopher", "Go",
-	"Bjarne", "Joy", "Nehama", "Dan", "Danny", "Randal"}
+	"Bjarne", "Joy", "Nehama", "Dan", "Danny", "Randal", "Linus", "Bill"}
 
 func CreateRandomName() string {
 	var name string
@@ -60,13 +60,15 @@ func main() {
 	}
 	mongoDal, err := masterdb.NewMongoDatastore(context.Background(), address)
 
-	//for i := 0; i < 30; i++ {
-	//	CreateDummyFile(mongoDal)
-	//}
-
 	if err != nil {
 		log.Fatalf("Failed to connect to MongoDB: %v", err)
 	}
+
+	for i := 0; i < 20; i++ {
+		CreateDummyFile(mongoDal)
+	}
+
+
 	server, err := master.NewServer(*port, mongoDal)
 	if err != nil {
 		log.Fatalf("Failed while establishing server: %v", err)

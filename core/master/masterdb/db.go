@@ -33,7 +33,7 @@ type ServerEntry struct {
 }
 
 type FileEntry struct {
-	UUID        string   `bson:"_id"`
+	UUID        string   `bson:"UUID"`
 	Name        string   `bson:"Name"`
 	Size        int64    `bson:"Size"`
 	ServerUUIDs []string `bson:"ServerUUIDs"`

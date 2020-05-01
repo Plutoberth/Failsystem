@@ -49,11 +49,11 @@ type server struct {
 }
 
 const (
-	defaultChunkSize  uint32 = 1 << 16
-	maxPort           uint   = 1 << 16 // 65536
-	delayTime                = time.Second * 10
-	uuidFile                 = "uuid"
-	HeartbeatInterval        = time.Second * 5
+	defaultChunkSize   uint32 = 1 << 16
+	maxPort            uint   = 1 << 16 // 65536
+	allocationLifetime        = time.Second * 10
+	uuidFile                  = "uuid"
+	HeartbeatInterval         = time.Second * 30
 )
 
 //NewServer - Initializes a new minion server.
@@ -388,11 +388,13 @@ func (s *server) Allocate(ctx context.Context, in *pb.AllocationRequest) (*pb.Al
 	}
 
 	//Define ample delay for the automatic deletion, as a context
-	allocationContext, _ := context.WithTimeout(context.Background(), delayTime)
+	allocationContext, _ := context.WithTimeout(context.Background(), allocationLifetime)
 	success, err := s.folder.AllocateSpace(allocationContext, in.GetUUID(), in.GetFileSize())
 	if err != nil {
+		log.Println(err.Error())
 		return nil, status.Errorf(codes.Internal, "Failed to allocate space in internal storage")
 	} else {
+		log.Printf("Allocated %v bytes for %v", in.GetFileSize(), in.GetUUID())
 		return &pb.AllocationResponse{
 			Allocated:      success,
 			AvailableSpace: s.folder.GetRemainingSpace(),
