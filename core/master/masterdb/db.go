@@ -16,7 +16,7 @@ type Datastore interface {
 	//Create a still-unavailable file entry, to be finalized later.
 	CreateFileEntry(ctx context.Context, entry FileEntry) error
 	//Finalize the file, marking it as available
-	FinalizeFileEntry(ctx context.Context, fileUUID string, hash pb.DataHash) error
+	FinalizeFileEntry(ctx context.Context, fileUUID string, hash DbHash) error
 	//Update servers that host the file.
 	UpdateFileHosts(ctx context.Context, fileUUID string, serverUUID string) error
 	//Get a file with that UUID, only if it is available.
@@ -33,10 +33,29 @@ type ServerEntry struct {
 }
 
 type FileEntry struct {
-	UUID        string      `bson:"_id"`
-	Name        string      `bson:"Name"`
-	Size        int64       `bson:"Size"`
-	ServerUUIDs []string    `bson:"ServerUUIDs"`
-	Available   bool        `bson:"Available"`
-	Hash        pb.DataHash `bson:"Hash"`
+	UUID        string   `bson:"_id"`
+	Name        string   `bson:"Name"`
+	Size        int64    `bson:"Size"`
+	ServerUUIDs []string `bson:"ServerUUIDs"`
+	Available   bool     `bson:"Available"`
+	Hash        DbHash   `bson:"Hash"`
+}
+
+type DbHash struct {
+	Type    pb.HashType
+	HexHash string
+}
+
+func (h *DbHash) ToPb() pb.DataHash {
+	return pb.DataHash{
+		Type:    h.Type,
+		HexHash: h.HexHash,
+	}
+}
+
+func PbToDbHash(hash pb.DataHash) DbHash {
+	return DbHash{
+		Type:    hash.Type,
+		HexHash: hash.HexHash,
+	}
 }

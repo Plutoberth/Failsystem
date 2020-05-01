@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/plutoberth/Failsystem/core/minion"
-	pb "github.com/plutoberth/Failsystem/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -18,13 +17,15 @@ type mongoDataStore struct {
 }
 
 const (
-	dbName           = "failsystemdb"
-	serverCollection = "servers"
-	fileCollection   = "files"
-	expiryIndex      = "expiryIndex"
-	serverTTL        = minion.HeartbeatInterval * 3
-	defaultUser      = "failnet"
-	defaultPassword  = "failnet"
+	dbName            = "failsystemdb"
+	serverCollection  = "servers"
+	fileCollection    = "files"
+	expiryIndex       = "expiryIndex"
+	uniqueNameIndex   = "uniqueNameIndex"
+	duplicateKeyError = 11000
+	serverTTL         = minion.HeartbeatInterval * 3
+	defaultUser       = "failnet"
+	defaultPassword   = "failnet"
 )
 
 func getEnvs() (username string, password string) {
@@ -65,8 +66,19 @@ func NewMongoDatastore(ctx context.Context, address string) (Datastore, error) {
 		mongo.IndexModel{Keys: bson.M{"LastUpdate": 1},
 			Options: options.Index().SetExpireAfterSeconds(int32(serverTTL.Seconds())).SetName(expiryIndex)},
 		options.CreateIndexes())
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to create index: %v", err)
+		return nil, fmt.Errorf("failed to create expiration index: %v", err)
+	}
+
+	_, _ = database.Collection(fileCollection).Indexes().DropOne(ctx, uniqueNameIndex, options.DropIndexes())
+	_, err = database.Collection(fileCollection).Indexes().CreateOne(ctx,
+		mongo.IndexModel{Keys: bson.M{"Name": 1},
+			Options: options.Index().SetUnique(true).SetName(expiryIndex)},
+		options.CreateIndexes())
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create name uniqueness index: %v", err)
 	}
 
 	return &mongoDataStore{database}, nil
@@ -98,17 +110,35 @@ func (m *mongoDataStore) GetServerEntry(ctx context.Context, UUID string) (*Serv
 
 func (m *mongoDataStore) CreateFileEntry(ctx context.Context, entry FileEntry) error {
 	entry.Available = false
-	entry.Hash = pb.DataHash{}
-	_, err := m.db.Collection(fileCollection).InsertOne(ctx, bson.M{"$set": entry}, options.InsertOne())
+	entry.Hash = DbHash{}
+	_, err := m.db.Collection(fileCollection).InsertOne(ctx, entry, options.InsertOne())
 	if err != nil {
+		var errstring string
+		switch e := err.(type) {
+		case mongo.WriteException:
+			if len(e.WriteErrors) >= 1 {
+				writeErr := e.WriteErrors[0]
+				if writeErr.Code == duplicateKeyError {
+					errstring = fmt.Sprintf("name %s already exists", entry.Name)
+				} else {
+					log.Println(writeErr.Message)
+					errstring = writeErr.Message
+				}
+			} else {
+				errstring = e.Error()
+			}
+
+		default:
+			errstring = e.Error()
+		}
+		return fmt.Errorf("create file failed: %v", errstring)
 		//Intentionally not wrapping so callers wouldn't depend on error
-		return fmt.Errorf("create file failed: %v", err)
 	}
 
 	return nil
 }
 
-func (m *mongoDataStore) FinalizeFileEntry(ctx context.Context, fileUUID string, hash pb.DataHash) error {
+func (m *mongoDataStore) FinalizeFileEntry(ctx context.Context, fileUUID string, hash DbHash) error {
 	_, err := m.db.Collection(fileCollection).UpdateOne(ctx, bson.M{"_id": fileUUID},
 		bson.M{"$set": bson.M{"Available": true, "Hash": hash}}, options.Update())
 	if err != nil {

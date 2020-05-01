@@ -210,9 +210,10 @@ func (s *server) InitiateFileRead(ctx context.Context, in *pb.FileReadRequest) (
 	}
 
 	//Simply get one of the alive servers that hold the file, and return it as a server to read from.
+	pbHash := file.Hash.ToPb()
 	return &pb.FileReadResponse{
 		MinionServerIp: file.ServerUUIDs[rand.Intn(len(file.ServerUUIDs))],
-		Hash:           &file.Hash,
+		Hash:           &pbHash,
 	}, nil
 }
 
@@ -252,7 +253,7 @@ func (s *server) Beat(ctx context.Context, in *pb.Heartbeat) (*pb.HeartBeatRespo
 }
 
 func (s *server) FinalizeUpload(ctx context.Context, in *pb.FinalizeUploadRequest) (*pb.FinalizeUploadResponse, error) {
-	err := s.db.FinalizeFileEntry(ctx, in.GetFileUUID(), *in.GetHash())
+	err := s.db.FinalizeFileEntry(ctx, in.GetFileUUID(), masterdb.PbToDbHash(*in.GetHash()))
 	if err != nil {
 		return nil, UpdateDbFailed
 	}
