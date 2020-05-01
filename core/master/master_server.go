@@ -34,7 +34,7 @@ type server struct {
 
 const (
 	maxPort           uint = 2 << 16 // 65536
-	replicationFactor      = 3
+	replicationFactor      = 1
 )
 
 var UpdateDbFailed = status.Errorf(codes.Internal, "Failed to update database")
@@ -147,10 +147,13 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 		return nil, status.Errorf(codes.InvalidArgument, "File size must be greater than zero")
 	}
 
-	fileUUID := in.GetFileName()
-	if _, err := uuid.Parse(fileUUID); err != nil {
-		return nil, fmt.Errorf("\"%v\" is not a valid UUID", fileUUID)
+	newuuid, err := uuid.NewUUID()
+	if err != nil {
+		log.Println("Failed to create UUID: ", err.Error())
+		return nil, status.Errorf(codes.Internal, "Failed to create UUID")
 	}
+	fileUUID := newuuid.String()
+
 	servers, err := s.db.GetServersWithEnoughSpace(ctx, in.FileSize)
 
 	if err != nil {
@@ -162,15 +165,10 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 		return nil, status.Errorf(codes.ResourceExhausted, "Not enough servers for replication")
 	}
 
-	newuuid, err := uuid.NewUUID()
-	if err != nil {
-		log.Println("Failed to create UUID: ", err.Error())
-		return nil, status.Errorf(codes.Internal, "Failed to create UUID")
-	}
-	fileuuid := newuuid.String()
+
 
 	//Allocate space on servers and empower one of them
-	empoweredServer, allocatedServers, err := s.allocateAndEmpower(ctx, servers, in.GetFileSize(), fileuuid)
+	empoweredServer, allocatedServers, err := s.allocateAndEmpower(ctx, servers, in.GetFileSize(), fileUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +180,7 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 
 	//Create a file entry in the db for book-keeping.
 	if err := s.db.CreateFileEntry(ctx, masterdb.FileEntry{
-		UUID:        fileuuid,
+		UUID:        fileUUID,
 		Name:        in.GetFileName(),
 		Size:        in.GetFileSize(),
 		ServerUUIDs: serverUUIDs,
