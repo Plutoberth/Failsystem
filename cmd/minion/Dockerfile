@@ -6,7 +6,7 @@ COPY . .
 RUN go mod download
 RUN go install ./cmd/minion/
 
-# Distroless would be better, but there are some bugs with it currently
+# TODO: Move to distroless
 FROM alpine
 
 COPY --from=build-env /go/bin/minion /

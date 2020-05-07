@@ -17,10 +17,9 @@ import (
 
 //Client interface defines methods that the caller may use to use the Minion grpc service.
 type Client interface {
-	//TODO: Add contexts
-	Upload(uuid string) (io.WriteCloser, error)
-	UploadByFilename(filepath string, uuid string) error
-	DownloadFile(uuid string, targetFile string) error
+	Upload(ctx context.Context, uuid string) (io.WriteCloser, error)
+	UploadByFilename(ctx context.Context, filepath string, uuid string) error
+	DownloadFile(ctx context.Context, uuid string, targetFile string) error
 	Close() error
 }
 
@@ -96,8 +95,8 @@ func (u *uploadManager) Close() error {
 	return nil
 }
 
-func (c *client) Upload(uuid string) (io.WriteCloser, error) {
-	stream, err := c.client.UploadFile(context.Background())
+func (c *client) Upload(ctx context.Context, uuid string) (io.WriteCloser, error) {
+	stream, err := c.client.UploadFile(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +114,7 @@ func (c *client) Upload(uuid string) (io.WriteCloser, error) {
 	}, nil
 }
 
-func (c *client) UploadByFilename(filepath string, uuid string) (err error) {
+func (c *client) UploadByFilename(ctx context.Context, filepath string, uuid string) (err error) {
 	var (
 		file *os.File
 	)
@@ -125,7 +124,7 @@ func (c *client) UploadByFilename(filepath string, uuid string) (err error) {
 	}
 	defer file.Close()
 
-	uploadWriter, err := c.Upload(uuid)
+	uploadWriter, err := c.Upload(ctx, uuid)
 	if err != nil {
 		return err
 	}
@@ -137,7 +136,7 @@ func (c *client) UploadByFilename(filepath string, uuid string) (err error) {
 }
 
 //Download the file with the specified uuid to the local path
-func (c *client) DownloadFile(uuid string, targetFile string) (err error) {
+func (c *client) DownloadFile(ctx context.Context, uuid string, targetFile string) (err error) {
 	var (
 		file *os.File
 	)
@@ -148,7 +147,7 @@ func (c *client) DownloadFile(uuid string, targetFile string) (err error) {
 
 	defer file.Close()
 
-	stream, err := c.client.DownloadFile(context.Background(), &pb.DownloadRequest{
+	stream, err := c.client.DownloadFile(ctx, &pb.DownloadRequest{
 		UUID: uuid,
 	})
 

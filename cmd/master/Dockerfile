@@ -6,6 +6,7 @@ COPY . .
 RUN go mod download
 RUN go install ./cmd/master/
 
+# TODO: Move to distroless
 FROM alpine
 
 COPY --from=build-env /go/bin/master /
