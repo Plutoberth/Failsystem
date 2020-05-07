@@ -60,10 +60,11 @@ type ManagedFolder interface {
 	//List files in the directory.
 	ListFiles() ([]os.FileInfo, error)
 
+	//Delete a file. The file is guaranteed to be deleted only if there are no ongoing read operations.
+	DeleteFile(UUID string) error
+
 	//Get the path of the managed folder.
 	GetPath() string
-
-	//TODO: Add DeleteFile
 }
 
 type allocationEntry struct {
@@ -125,9 +126,9 @@ func NewManagedFolder(quota int64, folderPath string) (ManagedFolder, error) {
 				return nil, fmt.Errorf("Tried to mount on a non-empty folder \"%v\"", folderPath)
 			}
 		} else {
-			// Make sure that the transfer folder is empty
 			transferPath := filepath.Join(folderPath, transfersDataFolder)
 
+			// Make sure that the transfer folder is empty
 			if err = os.RemoveAll(transferPath); err != nil {
 				return nil, err
 			}
@@ -324,6 +325,18 @@ func (m *managedFolder) ListFiles() ([]os.FileInfo, error) {
 	}
 
 	return files, nil
+}
+
+func (m *managedFolder) DeleteFile(UUID string) error {
+	if _, err := uuid.Parse(UUID); err != nil {
+		return fmt.Errorf("\"%v\" is not a valid UUID", UUID)
+	}
+
+	if err := os.Remove(path.Join(m.folderPath, UUID)); err != nil {
+		return fmt.Errorf("couldn't delete %v", UUID)
+	}
+
+	return nil
 }
 
 func (m *managedFolder) GetPath() string {
