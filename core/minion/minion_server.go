@@ -445,3 +445,15 @@ func (s *server) Empower(ctx context.Context, in *pb.EmpowermentRequest) (*pb.Em
 
 	return &pb.EmpowermentResponse{}, nil
 }
+
+func (s *server) DeleteFile(ctx context.Context, in *pb.DeletionRequest) (*pb.DeletionResponse, error) {
+	if _, err := uuid.Parse(in.GetUUID()); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Filename must be a UUID")
+	}
+
+	if err := s.folder.DeleteFile(in.GetUUID()); err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+	
+	return &pb.DeletionResponse{}, nil
+}
