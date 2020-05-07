@@ -195,7 +195,7 @@ func (s *server) heartbeatLoop() {
 //Create the subordinate uploads.
 //The system is designed so that the minion receives uploads from the users, and channels them to the replication
 //minions.
-func (s *server) createSubUploads(subs []string, uuid string) (subWriters []io.WriteCloser, minionClients []minion.Client, err error) {
+func (s *server) createSubUploads(ctx context.Context, subs []string, uuid string) (subWriters []io.WriteCloser, minionClients []minion.Client, err error) {
 	s.mtx.RLock()
 	s.mtx.RUnlock()
 	if subs != nil {
@@ -209,7 +209,7 @@ func (s *server) createSubUploads(subs []string, uuid string) (subWriters []io.W
 				return nil, nil, status.Errorf(codes.Internal, "Couldn't connect to minion server")
 			}
 
-			subWriters[i], err = minionClient.Upload(uuid)
+			subWriters[i], err = minionClient.Upload(ctx, uuid)
 			if err != nil {
 				return nil, nil, status.Errorf(codes.Internal, "Failed during replication process")
 			}
@@ -272,7 +272,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 			//If we're empowered for that file, create the subuploads and remember it.
 			subIps, ok := s.empowerments[filename]
 			if ok {
-				subWriters, minionClients, err = s.createSubUploads(subIps, filename)
+				subWriters, minionClients, err = s.createSubUploads(stream.Context(), subIps, filename)
 				amEmpowered = true
 			}
 
@@ -374,11 +374,19 @@ func (s *server) DownloadFile(req *pb.DownloadRequest, stream pb.Minion_Download
 		return status.Errorf(codes.NotFound, "File not present")
 	}
 
+	defer func() {
+		if err := file.Close(); err != nil {
+			//The user probably doesn't care about this error, but we should log it nonetheless
+			log.Printf("Failed to close a file after reading from it, %v", err)
+		}
+	}()
+
 	//Use the wrapper to send the files chunks directly using io.copy
 	chunkWriter := streams.NewFileChunkSenderWrapper(stream)
 	buf := make([]byte, defaultChunkSize)
 	bytesWritten, err := io.CopyBuffer(chunkWriter, file, buf)
 	log.Printf("Wrote %v bytes to chunkWriter", bytesWritten)
+
 	return err
 }
 
