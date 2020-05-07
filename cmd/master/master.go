@@ -64,10 +64,9 @@ func main() {
 		log.Fatalf("Failed to connect to MongoDB: %v", err)
 	}
 
-	for i := 0; i < 20; i++ {
-		CreateDummyFile(mongoDal)
-	}
-
+	//for i := 0; i < 30; i++ {
+	//	CreateDummyFile(mongoDal)
+	//}
 
 	server, err := master.NewServer(*port, mongoDal)
 	if err != nil {

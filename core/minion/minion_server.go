@@ -8,6 +8,7 @@ import (
 	"github.com/plutoberth/Failsystem/core/master/internal_master"
 	"github.com/plutoberth/Failsystem/core/streams"
 	"github.com/plutoberth/Failsystem/pkg/foldermgr"
+	"github.com/plutoberth/Failsystem/pkg/minion"
 	"io"
 	"io/ioutil"
 	"log"
@@ -194,14 +195,14 @@ func (s *server) heartbeatLoop() {
 //Create the subordinate uploads.
 //The system is designed so that the minion receives uploads from the users, and channels them to the replication
 //minions.
-func (s *server) createSubUploads(subs []string, uuid string) (subWriters []io.WriteCloser, minionClients []Client, err error) {
+func (s *server) createSubUploads(subs []string, uuid string) (subWriters []io.WriteCloser, minionClients []minion.Client, err error) {
 	s.mtx.RLock()
 	s.mtx.RUnlock()
 	if subs != nil {
 		subWriters = make([]io.WriteCloser, len(subs))
-		minionClients = make([]Client, len(subs))
+		minionClients = make([]minion.Client, len(subs))
 		for i, sub := range subs {
-			minionClient, err := NewClient(sub)
+			minionClient, err := minion.NewClient(sub)
 			minionClients[i] = minionClient
 			if err != nil {
 				log.Printf("Failed to connect to subordinate: %v", err)
@@ -218,10 +219,10 @@ func (s *server) createSubUploads(subs []string, uuid string) (subWriters []io.W
 }
 
 //Finalizes the subuploads and verifies that their hashes match.
-func (s *server) finalizeSubUploads(subWriters []io.WriteCloser, clients []Client) error {
+func (s *server) finalizeSubUploads(subWriters []io.WriteCloser, clients []minion.Client) error {
 	for _, subWriter := range subWriters {
 		if err := subWriter.Close(); err != nil {
-			if errors.Is(err, HashError) {
+			if errors.Is(err, minion.HashError) {
 				return status.Errorf(codes.DataLoss, "Data corrupted among servers")
 			} else {
 				log.Printf("Failed when closing Minion upload: %v", err)
@@ -245,7 +246,7 @@ func (s *server) UploadFile(stream pb.Minion_UploadFileServer) (err error) {
 	var (
 		file          io.WriteCloser
 		filename      string
-		minionClients []Client
+		minionClients []minion.Client
 		subWriters    []io.WriteCloser
 		amEmpowered   = false
 	)

@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/plutoberth/Failsystem/core/master"
+	"github.com/plutoberth/Failsystem/pkg/master"
 	"log"
 )
 
@@ -23,5 +23,4 @@ func main() {
 		log.Fatalf("Dial Failure: %v", err)
 	}
 	defer client.Close()
-
 }

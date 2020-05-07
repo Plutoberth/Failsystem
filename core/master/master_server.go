@@ -165,8 +165,6 @@ func (s *server) InitiateFileUpload(ctx context.Context, in *pb.FileUploadReques
 		return nil, status.Errorf(codes.ResourceExhausted, "Not enough servers for replication")
 	}
 
-
-
 	//Allocate space on servers and empower one of them
 	empoweredServer, allocatedServers, err := s.allocateAndEmpower(ctx, servers, in.GetFileSize(), fileUUID)
 	if err != nil {
